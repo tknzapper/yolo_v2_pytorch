@@ -16,10 +16,10 @@ def xxyy2xywh(box):
     h = box[:, 3] - box[:, 1]
 
 
-    cx = torch.from_numpy(cx).view(-1, 1)
-    cy = torch.from_numpy(cy).view(-1, 1)
-    w = torch.from_numpy(w).view(-1, 1)
-    h = torch.from_numpy(h).view(-1, 1)
+    cx = cx.view(-1, 1)
+    cy = cy.view(-1, 1)
+    w = w.view(-1, 1)
+    h = h.view(-1, 1)
 
     return torch.cat([cx, cy, w, h], dim=1)
 
@@ -45,25 +45,31 @@ def xywh2xxyy(box):
 
 
 def box_iou(box1, box2):
-    N = box1.size(0)
-    K = box2.size(0)
+    """
+    box size: [batch, grid, anchor, coordinate]
+    :param box1: [cx1, cy1, w1, h1]
+    :param box2: [cx2, cy2, w2, h2]
+    :return:
+    """
 
-    xi1 = torch.max(box1[:, 0].view(N, 1), box2[:, 0].view(1, K))
-    yi1 = torch.max(box1[:, 1].view(N, 1), box2[:, 1].view(1, K))
-    xi2 = torch.min(box1[:, 2].view(N, 1), box2[:, 2].view(1, K))
-    yi2 = torch.min(box1[:, 3].view(N, 1), box2[:, 3].view(1, K))
+    x1max = box1[:, :, :, 0] + box1[:, :, :, 2] / 2
+    x1min = box1[:, :, :, 0] - box1[:, :, :, 2] / 2
+    y1max = box1[:, :, :, 1] + box1[:, :, :, 3] / 2
+    y1min = box1[:, :, :, 1] - box1[:, :, :, 3] / 2
 
-    iw = torch.max(xi2 - xi1, box1.new(1).fill_(0))
-    ih = torch.max(yi2 - yi1, box1.new(1).fill_(0))
+    x2max = box2[:, :, :, 0] + box2[:, :, :, 2] / 2
+    x2min = box2[:, :, :, 0] - box2[:, :, :, 2] / 2
+    y2max = box2[:, :, :, 1] + box2[:, :, :, 3] / 2
+    y2min = box2[:, :, :, 1] - box2[:, :, :, 3] / 2
 
-    inter = iw * ih
+    xmax = torch.max(x1max, x2max)
+    xmin = torch.min(x1min, x2min)
+    ymax = torch.max(y1max, y2max)
+    ymin = torch.min(y1min, y2min)
 
-    box1_area = (box1[:, 2] - box1[:, 0]) * (box1[:, 3] - box1[:, 1])
-    box2_area = (box2[:, 2] - box2[:, 0]) * (box2[:, 3] - box2[:, 1])
+    area_intersect = (xmax - xmin) * (ymax - ymin)
+    area1 = box1[:, :, :, 2] * box1[:, :, :, 3]
+    area2 = box2[:, :, :, 2] * box2[:, :, :, 3]
+    area_union = area1 + area2 - area_intersect
 
-    box1_area = box1_area.view(N, 1)
-    box2_area = box2_area.view(1, K)
-
-    union_area = box1_area + box2_area - inter
-
-    return inter / union_area
+    return area_intersect / (area_union + 1e-6)
