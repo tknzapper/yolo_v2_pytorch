@@ -1,13 +1,13 @@
 data_root = './data/VOCdevkit/VOC2007/'
-img_root = 'JPEGimages/'
-# img_root = 'temp_image/'
-annot_root = 'Annotations/'
-# annot_root = 'temp_label/'
+# img_root = 'JPEGimages/'
+img_root = 'temp_image/'
+# annot_root = 'Annotations/'
+annot_root = 'temp_label/'
 
 classes = ['person',
            'bird', 'cat', 'cow', 'dog', 'horse', 'sheep',
            'aeroplane', 'bicycle', 'boat', 'bus', 'car', 'motorbike', 'train',
-           'bottle', 'chair', 'dining table', 'potted plant', 'sofa', 'tv/monitor']
+           'bottle', 'chair', 'diningtable', 'pottedplant', 'sofa', 'tvmonitor']
 
 num_classes = len(classes) # 20
 feature_size = 13
@@ -19,7 +19,7 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 4
+batch_size = 1
 
 # object_scale = 5
 # noobject_scale = 1

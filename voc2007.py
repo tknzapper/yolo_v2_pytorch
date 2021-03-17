@@ -72,6 +72,7 @@ class VOCDataset(Dataset):
                 gt_classes[i] = cls
 
             boxes = xxyy2xywh(torch.FloatTensor(boxes))
+            # print(img_name)
 
             return image, boxes, gt_classes
         else:
