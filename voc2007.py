@@ -70,6 +70,7 @@ class VOCDataset(Dataset):
 
                 boxes[i, :] = [x1, y1, x2, y2]
                 gt_classes[i] = cls
+                # print(obj.find('name').text)
 
             boxes = xxyy2xywh(torch.FloatTensor(boxes))
             # print(img_name)
@@ -85,32 +86,26 @@ def detection_collate(batch):
 
     label = torch.zeros((feature_size, feature_size, (num_classes + 5) * len(anchor_box)))
     for sample in batch:
-        imgs.append(sample[0])
 
+        imgs.append(sample[0])
         boxes = sample[1]
         gt_classes = sample[2]
 
+        num_obj = boxes.size(0)
+        objectness = torch.ones((num_obj, 1))
         scale_factor = 1 / feature_size
-        bsize, isize = boxes[:, 0:2].size()
-        objectness = torch.zeros((bsize, 1))
-        grid_index = torch.zeros((bsize, isize))
-        offset = torch.zeros((bsize, isize))
-        for b in range(bsize):
-            for i in range(isize):
-                objectness[b] = 1
-                g_index = int(float(boxes[:, 0:2][b, i].item()) // scale_factor)
-                offs = float(boxes[b, i].item() / scale_factor) - g_index
-                grid_index[b, i] = g_index
-                offset[b, i] = offs
-        grid_arr = torch.cat([objectness, offset, boxes[:, 2:4]], dim=1)
-        # print(grid_arr)
+        grid_index = boxes[:, 0:2] // scale_factor
+        offset = boxes[:, 0:2] / scale_factor - grid_index
+        gt_box = torch.cat([objectness, offset, boxes[:, 2:4]], dim=1)
 
-        b_size, _ = grid_index.size()
-        for b in range(b_size):
-            for anchor in range(len(anchor_box)):
-                idx = (num_classes + 5) * (anchor + 1)
-                label[int(grid_index[b][0].item()), int(grid_index[b][1].item()), idx-5:idx] = grid_arr[b]
-                label[int(grid_index[b][0]), int(grid_index[b][1]), gt_classes[b]+idx-25] = 1
+        label[grid_index[:, 0].long(), grid_index[:, 1].long(), num_classes:num_classes+5] = gt_box
+        label[grid_index[:, 0].long(), grid_index[:, 1].long(), gt_classes] = 1
+        label[:, :, (num_classes + 5) * 1:(num_classes + 5) * 2] = label[:, :, :num_classes + 5]
+        label[:, :, (num_classes + 5) * 2:(num_classes + 5) * 3] = label[:, :, :num_classes + 5]
+        label[:, :, (num_classes + 5) * 3:(num_classes + 5) * 4] = label[:, :, :num_classes + 5]
+        label[:, :, (num_classes + 5) * 4:(num_classes + 5) * 5] = label[:, :, :num_classes + 5]
+        # print(label[6, 7, :])
+        # print(label)
 
         targets.append(label)
 
