@@ -73,7 +73,7 @@ class VOCDataset(Dataset):
                 # print(obj.find('name').text)
 
             boxes = xxyy2xywh(torch.FloatTensor(boxes))
-            # print(img_name)
+            print(img_name)
 
             return image, boxes, gt_classes
         else:
@@ -101,10 +101,9 @@ def detection_collate(batch):
 
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), num_classes:num_classes+5] = gt_box
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), gt_classes] = 1
-        # label[:, :, (num_classes + 5) * 1:(num_classes + 5) * 2] = label[:, :, :num_classes + 5]
-        # label[:, :, (num_classes + 5) * 2:(num_classes + 5) * 3] = label[:, :, :num_classes + 5]
-        # label[:, :, (num_classes + 5) * 3:(num_classes + 5) * 4] = label[:, :, :num_classes + 5]
-        # label[:, :, (num_classes + 5) * 4:(num_classes + 5) * 5] = label[:, :, :num_classes + 5]
+        # for anchor in range(len(anchor_box)):
+        #     idx = num_classes + 5
+        #     label[:, :, idx*anchor:idx*(anchor+1)] = label[:, :, 0:idx]
         # print(label[6, 7, :])
         # print(label)
 

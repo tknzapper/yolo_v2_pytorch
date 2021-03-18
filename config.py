@@ -19,7 +19,7 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 2
+batch_size = 1
 
 # object_scale = 5
 # noobject_scale = 1

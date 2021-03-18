@@ -55,30 +55,25 @@ class Loss(nn.Module):
         anc_box = generate_anchorbox(pred_box)
 
         iou = box_iou(anc_box, gt_box)
+        # print(iou.shape)
         max_iou, anchor_idx = torch.max(iou, dim=-1, keepdim=True)
         max_iou = max_iou.view(bsize, h * w, -1)
         anchor_idx = anchor_idx.view(bsize, h * w, -1)
         idx = torch.nonzero(gt_conf.view(bsize, h * w))
         batch = idx[:, 0].long()
         cell_idx = idx[:, 1].long()
+        # print(idx)
+        # print(anchor_idx[batch, cell_idx])
 
         mask = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
         target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
         mask[batch, cell_idx, anchor_idx[batch, cell_idx]] = gt_conf[batch, cell_idx]
-        # gt_conf[batch, cell_idx, anchor_idx[batch, cell_idx]] = 1
+        target_conf[batch, cell_idx, anchor_idx[batch, cell_idx]] = max_iou[batch, cell_idx]
 
-        # for i in range(len(idx)):
-        #     mask[idx[i][0], idx[i][1], anchor_idx[idx[i][0], idx[i][1]]] = gt_conf[idx[i][0], idx[i][1]]
-        #     target_conf[idx[i][0], idx[i][1], anchor_idx[idx[i][0], idx[i][1]]] = max_iou[idx[i][0], idx[i][1]]
-        print(mask.shape)
-        print(gt_conf.shape)
-        # test = pred_box * mask
-        # test2 = gt_box * mask
-        # print(test.shape)
-        # print(test2.shape)
-        # box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
-        # conf_loss = 1 / batch_size * self.mse(pred_conf * mask, gt_conf * mask)
-        # print(box_loss)
+        box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
+        conf_loss = 1 / batch_size * self.mse(pred_conf * mask, target_conf * mask)
+
+
 
 
 if __name__ == "__main__":
