@@ -84,12 +84,13 @@ def detection_collate(batch):
     imgs = []
     targets = []
 
-    label = torch.zeros((feature_size, feature_size, (num_classes + 5) * len(anchor_box)))
     for sample in batch:
 
         imgs.append(sample[0])
         boxes = sample[1]
         gt_classes = sample[2]
+
+        label = torch.zeros((feature_size, feature_size, (num_classes + 5) * len(anchor_box)))
 
         num_obj = boxes.size(0)
         objectness = torch.ones((num_obj, 1))
@@ -100,10 +101,10 @@ def detection_collate(batch):
 
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), num_classes:num_classes+5] = gt_box
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), gt_classes] = 1
-        label[:, :, (num_classes + 5) * 1:(num_classes + 5) * 2] = label[:, :, :num_classes + 5]
-        label[:, :, (num_classes + 5) * 2:(num_classes + 5) * 3] = label[:, :, :num_classes + 5]
-        label[:, :, (num_classes + 5) * 3:(num_classes + 5) * 4] = label[:, :, :num_classes + 5]
-        label[:, :, (num_classes + 5) * 4:(num_classes + 5) * 5] = label[:, :, :num_classes + 5]
+        # label[:, :, (num_classes + 5) * 1:(num_classes + 5) * 2] = label[:, :, :num_classes + 5]
+        # label[:, :, (num_classes + 5) * 2:(num_classes + 5) * 3] = label[:, :, :num_classes + 5]
+        # label[:, :, (num_classes + 5) * 3:(num_classes + 5) * 4] = label[:, :, :num_classes + 5]
+        # label[:, :, (num_classes + 5) * 4:(num_classes + 5) * 5] = label[:, :, :num_classes + 5]
         # print(label[6, 7, :])
         # print(label)
 

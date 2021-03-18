@@ -98,15 +98,15 @@ def delta_box(box1, box2):
     return torch.cat([tx, ty, tw, th], dim=-1)
 
 
-def generate_anchorbox(box):
+def generate_anchorbox(box, device="cuda"):
     """
     box size: [batch, grid, anchor, coordinate]
     :param box: [x, y, w, h]
     :return:
     """
 
-    for anchor in range(len(anchor_box)):
-        for i in range(2):
-            box[:, :, anchor, i+2] *= anchor_box[anchor][i]
+    anchor = torch.FloatTensor(anchor_box).to(device)
+
+    box[:, :, :, 2:4] *= anchor[:, 0:2]
 
     return box

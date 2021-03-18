@@ -16,12 +16,10 @@ class Loss(nn.Module):
     def forward(self, prediction, target):
         bsize, _, h, w = prediction.size()
         out = prediction.permute(0, 2, 3, 1).contiguous().view(bsize, h * w * len(self.anchor), 5 + self.num_classes)
-
-        B, H, W, _ = target.size()
-        target = target.view(B, H * W * len(self.anchor), 5 + self.num_classes).contiguous()
+        target = target.view(bsize, h * w * len(self.anchor), 5 + self.num_classes).contiguous()
 
         # sorting prediction data
-        pred_conf = torch.sigmoid(out[:, :, 20])
+        pred_conf = torch.sigmoid(out[:, :, 20:21])
         pred_xy = torch.sigmoid(out[:, :, 21:23])
         pred_wh = torch.exp(out[:, :, 23:25])
         pred_cls = out[:, :, :20]
@@ -29,12 +27,17 @@ class Loss(nn.Module):
         pred_data = (pred_box, pred_conf, pred_cls)
 
         # sorting target data
-        gt_conf = target[:, :, 20]
+        gt_conf = target[:, :, 20:21]
         gt_xy = target[:, :, 21:23]
         gt_wh = target[:, :, 23:25]
         gt_cls = target[:, :, :20]
         gt_box = torch.cat([gt_xy, gt_wh], dim=-1)
         gt_data = (gt_box, gt_conf, gt_cls)
+        # print(gt_box)
+
+        # gt_conf = gt_conf.view(bsize, h * w, len(self.anchor), -1)
+        # print(torch.nonzero(gt_conf))
+        # print(gt_conf.shape)
 
         self._calc_loss(pred_data, gt_data, h, w)
 
@@ -54,27 +57,50 @@ class Loss(nn.Module):
         pred_box = pred_box.view(bsize, h * w, len(self.anchor), -1)
         gt_box = gt_box.view(bsize, h * w, len(self.anchor), -1)
         anc_box = generate_anchorbox(pred_box)
+        # print(anc_box.shape)
 
         gt_conf = gt_conf.view(bsize, h * w, len(self.anchor), -1)
         mask = gt_conf.new_zeros(bsize, h * w, len(self.anchor), 1)
-        iou_target = gt_conf.new_zeros(bsize, h * w, len(self.anchor), 1)
 
         iou = box_iou(anc_box, gt_box)
-        print(iou.shape)
+        # print(iou.shape)
         max_iou, anchor_idx = torch.max(iou, dim=-1, keepdim=True)
         max_iou = max_iou.view(bsize, h * w, -1)
-        anchor_idx = anchor_idx.view(bsize, -1)
-        # print(max_iou.shape)
 
-        mask[:, :, anchor_idx, :] = gt_conf[:, :, anchor_idx, :]
-        iou_target[:, :, anchor_idx, :] = max_iou
+        gt_conf = gt_conf.view(bsize, h, w, len(self.anchor))
+        # print(gt_conf[:, 6, 7, anchor_idx[:, 1]])
+        anchor_idx = anchor_idx.view(bsize, h * w, -1)
+        # print(max_iou.shape)
+        # print(anchor_idx)
+        print(torch.nonzero(gt_conf[:, :, :, anchor_idx[:, 1].long()]))
+        #
+        # mask[:, :, anchor_idx[:, 1]] = gt_conf[:, :, anchor_idx[:, 1]]
+        # print(torch.nonzero(mask))
+
+        # for b in range(bsize):
+        #     for cell_idx in range(h * w):
+        #         argmax_anchor_idx = anchor_idx[b, cell_idx]
+        #         object_cell_idx = torch.nonzero(gt_conf[:, :, argmax_anchor_idx])[:, 1].item()
+        #         mask[b, cell_idx, argmax_anchor_idx, :] = gt_conf[b, cell_idx, argmax_anchor_idx, :]
+        #         # print(object_cell_idx)
+        #         gt_conf[b, object_cell_idx, :, :] = max_iou[b, cell_idx, :]
+        #         # print(argmax_anchor_idx)
+
+        # mask[:, :, anchor_idx, :] = gt_conf[:, :, anchor_idx, :]
+        # gt_conf[:, torch.nonzero(gt_conf)[:, 1], anchor_idx, :] = max_iou
+        # print(torch.nonzero((gt_conf[:, :, anchor_idx, :])))
+        # print(torch.count_nonzero((gt_conf[:, :, anchor_idx, :])))
+        # print(gt_conf)
         # print(iou_target)
         # print(torch.nonzero(gt_conf))
         # print(mask.view(bsize, h, w, -1))
+        # print(torch.nonzero(gt_conf[:, :, 0, :])[:, 1])
+        # print(mask[:, :, anchor_idx[:, 85]])
+        # print(mask)
 
-        box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
-        # iou_loss = 1 / batch_size * self.mse(pred_conf * mask, )
-
+        # box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
+        # conf_loss = 1 / batch_size * self.mse(pred_conf * mask, gt_conf * mask)
+        # print(box_loss)
 
 
 if __name__ == "__main__":
@@ -106,7 +132,7 @@ if __name__ == "__main__":
             optimizer.zero_grad()
 
             outputs = model(inputs)
-            # print(outputs)
+            # print(outputs.shape)
             loss = criterion(outputs, labels)
             print(loss)
 
