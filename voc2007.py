@@ -90,7 +90,7 @@ def detection_collate(batch):
         boxes = sample[1]
         gt_classes = sample[2]
 
-        label = torch.zeros((feature_size, feature_size, (num_classes + 5) * len(anchor_box)))
+        label = torch.zeros((feature_size, feature_size, (num_classes + 5)))
 
         num_obj = boxes.size(0)
         objectness = torch.ones((num_obj, 1))
