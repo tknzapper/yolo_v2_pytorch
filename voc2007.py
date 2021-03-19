@@ -73,7 +73,7 @@ class VOCDataset(Dataset):
                 # print(obj.find('name').text)
 
             boxes = xxyy2xywh(torch.FloatTensor(boxes))
-            print(img_name)
+            # print(img_name)
             # print(gt_classes)
             return image, boxes, torch.LongTensor(gt_classes)
         else:
@@ -92,7 +92,7 @@ def detection_collate(batch):
         boxes = sample[1]
         gt_classes = sample[2]
         gt_classes.unsqueeze_(1)
-        print(gt_classes.shape)
+
         num_obj = boxes.size(0)
         objectness = torch.ones((num_obj, 1))
         scale_factor = 1 / feature_size
@@ -100,6 +100,7 @@ def detection_collate(batch):
         # print(grid_index)
         offset = boxes[:, 0:2] / scale_factor - grid_index
         gt_box = torch.cat([objectness, offset, boxes[:, 2:4]], dim=1)
+        # print(grid_index)
 
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), num_classes:num_classes+5] = gt_box
         label[grid_index[:, 0].long(), grid_index[:, 1].long(), gt_classes[:, 0].long()] = 1
