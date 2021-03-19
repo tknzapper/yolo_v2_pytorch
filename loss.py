@@ -35,7 +35,9 @@ class Loss(nn.Module):
         gt_box = torch.cat([gt_xy, gt_wh], dim=-1)
         gt_data = (gt_box, gt_conf, gt_cls)
 
-        self._calc_loss(pred_data, gt_data, h, w)
+        loss = self._calc_loss(pred_data, gt_data, h, w)
+
+        return loss
 
 
     def _calc_loss(self, pred_data, gt_data, h, w):
@@ -47,32 +49,46 @@ class Loss(nn.Module):
         gt_conf = gt_data[1]
         gt_cls = gt_data[2]
 
-        # calculating iou
-
         bsize = pred_box.size(0)
         pred_box = pred_box.view(bsize, h * w, len(self.anchor), -1)
         gt_box = gt_box.view(bsize, h * w, 1, -1)
         anc_box = generate_anchorbox(pred_box)
-
         iou = box_iou(anc_box, gt_box)
-        # print(iou.shape)
+
         max_iou, anchor_idx = torch.max(iou, dim=-1, keepdim=True)
         max_iou = max_iou.view(bsize, h * w, -1)
         anchor_idx = anchor_idx.view(bsize, h * w, -1)
         idx = torch.nonzero(gt_conf.view(bsize, h * w))
         batch = idx[:, 0].long()
         cell_idx = idx[:, 1].long()
-        # print(idx)
-        # print(anchor_idx[batch, cell_idx])
+        batch.unsqueeze_(1)
+        cell_idx.unsqueeze_(1)
 
+        argmax_anchor_idx = anchor_idx[batch, cell_idx].squeeze(2)
+        # print(argmax_anchor_idx)
         mask = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
         target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-        mask[batch, cell_idx, anchor_idx[batch, cell_idx]] = gt_conf[batch, cell_idx]
-        target_conf[batch, cell_idx, anchor_idx[batch, cell_idx]] = max_iou[batch, cell_idx]
 
-        box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
-        conf_loss = 1 / batch_size * self.mse(pred_conf * mask, target_conf * mask)
+        mask[batch, cell_idx, argmax_anchor_idx] = gt_conf[batch, cell_idx]
+        target_conf[batch, cell_idx, argmax_anchor_idx] = max_iou[batch, cell_idx]
+        # print(mask[batch[1], cell_idx[1], argmax_anchor_idx[1]])
+        pred_conf = pred_conf.view(bsize, h * w, len(self.anchor), -1)
 
+        pred_cls = pred_cls.view(-1, self.num_classes)
+        gt_cls = gt_cls.view(-1, self.num_classes)
+        cls_keep = torch.nonzero(mask)[:, -1]
+        pred_cls = pred_cls[cls_keep, :]
+        gt_cls = gt_cls[cls_keep].long()
+        # print(pred_cls.shape)
+        print(gt_cls.shape)
+        # print(torch.nonzero(mask))
+        # print(cls_keep)
+
+        # box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
+        # conf_loss = 1 / batch_size * self.mse(pred_conf * mask, target_conf * mask)
+        # cls_loss = 1 / batch * self.cross_entropy(pred_cls, gt_cls)
+
+        # return box_loss, conf_loss, cls_loss
 
 
 
@@ -108,6 +124,9 @@ if __name__ == "__main__":
             # print(outputs.shape)
             loss = criterion(outputs, labels)
             print(loss)
+
+            # loss.backward()
+            # optimizer.step()
 
             break
         break
