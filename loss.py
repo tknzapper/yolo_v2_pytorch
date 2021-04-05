@@ -57,107 +57,32 @@ class Loss(nn.Module):
         max_iou, anchor_idx = torch.max(iou, dim=-1, keepdim=True)
         max_iou = max_iou.view(bsize, h * w, -1)
         anchor_idx = anchor_idx.view(bsize, h * w, -1)
+
         idx = torch.nonzero(gt_conf.view(bsize, h * w))
         batch = idx[:, 0].long()
         cell_idx = idx[:, 1].long()
+        trans_idx = idx.T
         batch.unsqueeze_(1)
         cell_idx.unsqueeze_(1)
-
         argmax_anchor_idx = anchor_idx[batch, cell_idx].squeeze(2)
-        # print(argmax_anchor_idx)
-        # print(argmax_anchor_idx)
+
         mask = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-        cls_mask = pred_box.new_zeros(bsize, h * w, 1)
-        target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-
-
         mask[batch, cell_idx, argmax_anchor_idx] = gt_conf[batch, cell_idx]
-
         mask = mask.int() >= 1
-        cls_mask = gt_conf[batch, cell_idx].int() >= 1
 
-        # print(mask[:, 85, :, :])
-        # print(mask[:, 71, :, :])
-        #
-        # not_mask = mask >= 1
-        #
-        # print(~not_mask[:, 85, :, :])
-        # print(~not_mask[:, 71, :, :])
-        #target_conf[batch, cell_idx, argmax_anchor_idx] = max_iou[batch, cell_idx]
-        target_conf[batch, cell_idx, argmax_anchor_idx] = 1.
-        # print(mask[batch[1], cell_idx[1], argmax_anchor_idx[1]])
         pred_conf = pred_conf.view(bsize, h * w, len(self.anchor), -1)
+        target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
+        target_conf[batch, cell_idx, argmax_anchor_idx] = 1.
+
         pred_cls = pred_cls.view(bsize, h * w, len(self.anchor), -1)
-
-        # print("pred_cls Pre : ", pred_cls.shape)
-        # print("gt_cls Pre : ", gt_cls.shape)
-        # print("anchor_idx Pre : ", anchor_idx.shape)
-
-
-        # mask 1 : GT Confidence가 1인 예들만
-        # mask 2 : Predict IoU가 가장 높은 Anchor Index
-        #print(idx)
-        #print(idx.shape)
-        #gt_cls = gt_cls[idx]
-
-        trans_idx = idx.T
+        pred_cls = pred_cls[trans_idx[0], trans_idx[1], anchor_idx[trans_idx[0], trans_idx[1]][0]]
         gt_cls = gt_cls[trans_idx[0], trans_idx[1]]
         gt_cls = torch.max(gt_cls, dim=1)[1].long()
-
-        #gt_cls = torch.LongTensor(torch.max(gt_cls, dim=1)[0].cuda())
-        #print(gt_cls)
-        cls_keep = torch.nonzero(mask)
-        #print(mask.shape)
-        pred_cls = pred_cls[trans_idx[0], trans_idx[1], anchor_idx[trans_idx[0], trans_idx[1]][0]]
-        # gt_cls = pred_cls[cls_keep]
-        # print(pred_cls)
-        # print(gt_cls)
-        #print("pred_cls After : ", pred_cls.shape)
-        #print("gt_cls After : ", gt_cls.shape)
-        # print("anchor_idx After : ", anchor_idx[idx.T[0], idx.T[1]].shape)
-        # pred_cls = pred_cls.view(-1, self.num_classes)
-        # gt_cls = gt_cls.view(-1, self.num_classes)
-
-        cls_keep = torch.nonzero(mask)
-        #pred_cls = pred_cls[cls_keep]
-        #gt_cls = gt_cls[cls_keep]
-
-        # pred_cls = torch.argmax(pred_cls, 1)
-        # gt_cls = torch.argmax(gt_cls, 1)
-        #print(pred_cls.shape)
-        #print(gt_cls.shape)
-
-        # print(cls_keep)
-        # print(cls_keep.shape)
-
-        #print("pred_cls : ", pred_cls)
-        #print("gt_cls : ", gt_cls)
-        # print(pred_conf.shape)
-        # print(mask.shape)
-        # print(target_conf.shape)
-        #
-        # print(pred_conf * mask)
-        print((mask > 0).nonzero(as_tuple=True))
-        print((mask * pred_conf)[0, 85])
-        print((mask * pred_conf)[1, 71])
-
-        print((mask * target_conf)[0, 85])
-        print((mask * target_conf)[1, 71])
-
-        # print((pred_conf * mask > 0).nonzero(as_tuple=True))
-        # print((target_conf * mask > 0).nonzero(as_tuple=True))
-        #print(target_conf * mask)
-
-        #box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box * mask, gt_box * mask)
-        #conf_loss = 1 / batch_size * self.mse(pred_conf * mask, target_conf * mask)
-        #noobj_loss = 1 / batch_size * lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
 
         box_loss = lambda_coord * self.mse(pred_box * mask, gt_box * mask)
         conf_loss = self.mse(pred_conf * mask, target_conf * mask)
         noobj_loss = lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
-
         cls_loss = self.cross_entropy(pred_cls, gt_cls).mean()
-
         total_loss = box_loss + conf_loss + noobj_loss + cls_loss
 
         print("box_loss: {}".format(box_loss))
