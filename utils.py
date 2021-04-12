@@ -10,18 +10,12 @@ def xxyy2xywh(box):
     :return: cx, cy, w, h
     """
 
-    cx = (box[:, 2] + box[:, 0]) / 2
-    cy = (box[:, 3] + box[:, 1]) / 2
-    w = box[:, 2] - box[:, 0]
-    h = box[:, 3] - box[:, 1]
+    cx = (box[2] + box[0]) / 2 - 1
+    cy = (box[3] + box[1]) / 2 - 1
+    w = box[2] - box[0]
+    h = box[3] - box[1]
 
-
-    cx = cx.view(-1, 1)
-    cy = cy.view(-1, 1)
-    w = w.view(-1, 1)
-    h = h.view(-1, 1)
-
-    return torch.cat([cx, cy, w, h], dim=1)
+    return [cx, cy, w, h]
 
 
 def xywh2xxyy(box):
@@ -31,17 +25,21 @@ def xywh2xxyy(box):
     :return: xmin, ymin, xmax, ymax
     """
 
-    xmin = box[:, 0] - (box[:, 2] / 2)
-    ymin = box[:, 1] - (box[:, 3] / 2)
-    xmax = box[:, 2] + (box[:, 2] / 2)
-    ymax = box[:, 1] + (box[:, 3] / 2)
+    xmin = box[0] - (box[2] / 2) + 1
+    ymin = box[1] - (box[3] / 2) + 1
+    xmax = box[0] + (box[2] / 2) + 1
+    ymax = box[1] + (box[3] / 2) + 1
 
-    xmin = xmin.view(-1, 1)
-    ymin = ymin.view(-1, 1)
-    xmax = xmax.view(-1, 1)
-    ymax = ymax.view(-1, 1)
+    return [xmin, ymin, xmax, ymax]
 
-    return torch.cat([xmin, ymin, xmax, ymax], dim=1)
+
+def normalize(box, w, h):
+    box[0] /= w
+    box[1] /= h
+    box[2] /= w
+    box[3] /= h
+
+    return box
 
 
 def box_iou(box1, box2):
@@ -72,7 +70,11 @@ def box_iou(box1, box2):
     area2 = box2[:, :, :, 2] * box2[:, :, :, 3]
     area_union = area1 + area2 - area_intersect
 
-    return area_intersect / (area_union + 1e-6)
+    iou = area_intersect / area_union
+    iou = torch.where(iou >= 0, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
+    iou = torch.where(iou <= 1, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
+
+    return iou
 
 
 def delta_box(box1, box2):
