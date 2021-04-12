@@ -103,10 +103,9 @@ class Darknet19(nn.Module):
 
 
 class Yolo_v2(nn.Module):
-    def __init__(self, train=False):
+    def __init__(self):
         super(Yolo_v2, self).__init__()
         darknet19 = Darknet19()
-        self.train = train
         self.num_classes = num_classes
         self.anchors = anchor_box
 
@@ -118,14 +117,13 @@ class Yolo_v2(nn.Module):
             CNNBlock(1024, 1024, kernel_size=3, stride=1, padding=1),
             CNNBlock(1024, 1024, kernel_size=3, stride=1, padding=1)
         )
-        # self.downsampler = nn.Sequential(
-        #     CNNBlock(512, 64, kernel_size=1, stride=1)
-        # )
         self.conv4 = nn.Sequential(
             CNNBlock(3072, 1024, kernel_size=3, stride=1, padding=1),
             nn.Conv2d(1024, (5 + self.num_classes) * len(self.anchors), kernel_size=1)
         )
         self.reorg = ReorgLayer()
+        # initialize weight
+        self.init_weight(self.conv3)
         self.init_weight(self.conv4)
 
     def forward(self, x):

@@ -1,8 +1,8 @@
 data_root = './data/VOCdevkit/VOC2007/'
-img_root = 'JPEGimages/'
-# img_root = 'temp_image/'
-annot_root = 'Annotations/'
-# annot_root = 'temp_label/'
+# img_root = 'JPEGimages/'
+img_root = 'temp_image/'
+# annot_root = 'Annotations/'
+annot_root = 'temp_label/'
 
 classes = ['person',
            'bird', 'cat', 'cow', 'dog', 'horse', 'sheep',
@@ -20,6 +20,7 @@ anchor_box = [(1.3221, 1.73145),
 
 resize = 416
 batch_size = 1
+epochs = 1000
 
 lambda_coord = 5
 lambda_noobj = 0.5
