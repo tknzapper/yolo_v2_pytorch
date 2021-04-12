@@ -1,4 +1,5 @@
 import config as cfg
+import utils
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
@@ -32,38 +33,42 @@ BOX_COLOR = box_color()
 
 TEXT_COLOR = (255, 255, 255) # WHITE
 
-def visualize_bbox(image, bbox, class_name, color=BOX_COLOR, width=2):
+def visualize_bbox(image, bbox, class_idx, width=3):
     # Visualize a single bounding box on the image
-    xmin, ymin, xmax, ymax = bbox
+    xmin, ymin, xmax, ymax = utils.xywh2xxyy(bbox)
+
     if isinstance(image, np.ndarray):
         img = Image.fromarray(image)
     else:
         img = image
-    # img = img.convert(mode='HSV')
-    idx = cfg.classes.index(class_name)
-    draw = ImageDraw.Draw(img)
-    draw.rectangle(bbox, outline=color[idx], width=width)
 
+    xmin *= img.width
+    ymin *= img.height
+    xmax *= img.width
+    ymax *= img.height
+
+    # idx = cfg.classes.index(class_name)
+    class_name = cfg.classes[class_idx]
+    color = BOX_COLOR[class_idx]
+    draw = ImageDraw.Draw(img)
+    # Draw bbox
+    draw.rectangle((xmin, ymin, xmax, ymax), outline=color, width=width)
+    # Draw Label Text
     font = ImageFont.truetype(cfg.font, 12)
     text_width, text_height = font.getsize(class_name)
-    draw.rectangle((xmin, ymin, xmin + text_width, ymin + int(1.3 * text_height)), fill=color[idx])
-    draw.text((xmin, ymin), text=class_name, fill=TEXT_COLOR, font=font, anchor='la')
+    draw.rectangle((xmin, ymin - int(1.3 * text_height), xmin + text_width, ymin), fill=color)
+    draw.text((xmin, ymin), text=class_name, fill=TEXT_COLOR, font=font, anchor='ld')
 
     return img
 
 
 def visualize(image, bboxes, classes):
     img = image.copy()
-    num_obj = len(bboxes)
-
-    for objs in range(num_obj):
+    for objs in range(len(bboxes)):
         bbox = bboxes[objs]
-        class_name = classes[objs]
-        img = visualize_bbox(img, bbox, class_name)
-
+        class_idx = classes[objs]
+        img = visualize_bbox(img, bbox, class_idx)
     img.show()
-
-
 
 
 if __name__ == "__main__":

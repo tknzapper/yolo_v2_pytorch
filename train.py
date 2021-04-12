@@ -10,7 +10,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-writer = SummaryWriter('./runs/test')
+writer = SummaryWriter()
 transform = A.Compose([
     # A.RandomSizedBBoxSafeCrop(cfg.resize, cfg.resize, erosion_rate=0.2, p=1),
     A.RandomBrightnessContrast(p=0.5),

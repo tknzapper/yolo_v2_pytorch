@@ -82,32 +82,30 @@ class Loss(nn.Module):
         box_loss = lambda_coord * self.mse(pred_box * mask, gt_box * mask)
         conf_loss = self.mse(pred_conf * mask, target_conf * mask)
         noobj_loss = lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
-        cls_loss = self.cross_entropy(pred_cls, gt_cls).mean()
-        total_loss = box_loss + conf_loss + noobj_loss + cls_loss
+        cls_loss = self.cross_entropy(pred_cls, gt_cls)
 
-        print("box_loss: {}".format(box_loss))
-        print("conf_loss: {}".format(conf_loss))
-        print("noobj_loss: {}".format(noobj_loss))
-        print("cls_loss: {}".format(cls_loss))
-
-        print()
-        print()
-
-        return total_loss
-
+        return box_loss, conf_loss, noobj_loss, cls_loss
 
 
 if __name__ == "__main__":
     from voc2007 import *
     from torch.utils.data import DataLoader
-    import torchvision.transforms as transforms
+    import albumentations as A
+
+    transform = A.Compose([
+        # A.RandomSizedBBoxSafeCrop(cfg.resize, cfg.resize, erosion_rate=0.2, p=1),
+        A.RandomBrightnessContrast(p=0.5),
+        A.HueSaturationValue(p=0.5),
+        A.Resize(cfg.resize, cfg.resize, p=1),
+        A.Normalize(),
+    ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
     train_dataset = VOCDataset(data_root=data_root,
-                               transforms=transforms.ToTensor())
+                               transform=transform)
 
     train_loader = DataLoader(dataset=train_dataset,
                               batch_size=batch_size,
-                              shuffle=True,
+                              shuffle=False,
                               collate_fn=detection_collate)
     model = Yolo_v2().to(device)
     criterion = Loss().to(device)
@@ -127,7 +125,7 @@ if __name__ == "__main__":
             outputs = model(inputs)
             # print(outputs.shape)
             loss = criterion(outputs, labels)
-            print(loss)
+            # print(loss)
 
             # loss.backward()
             # optimizer.step()
