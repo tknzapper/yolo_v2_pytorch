@@ -19,17 +19,21 @@ transform = A.Compose([
     A.Normalize(),
 ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
-train_dataset = VOCDataset(data_root=data_root,
-                           transform=transform)
+dataset = VOCDataset(data_root=data_root,
+                     transform=transform)
+
+train_dataset = dataset[:-511]
+valid_dataset = dataset[-511:-11]
+test_dataset = dataset[-11:]
 
 train_loader = DataLoader(dataset=train_dataset,
                           batch_size=batch_size,
                           shuffle=True,
                           collate_fn=detection_collate)
 
-model = Yolo_v2().to(device)
+model = Yolo_v2(pretrained=True).to(device)
 criterion = Loss().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
 
 iters_per_epoch = math.ceil(len(train_dataset) / cfg.batch_size)
@@ -72,7 +76,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
             loss_temp = 0
 
+# def valid():
+
+
 if __name__ == "__main__":
 
-    for epoch in range(cfg.epochs):
-        train(train_loader, model, criterion, optimizer, epoch)
+    # for epoch in range(cfg.epochs):
+    #     train(train_loader, model, criterion, optimizer, epoch)
+    # torch.save(model, cfg.save_path)
+    print(len(train_dataset), len(valid_dataset), len(test_dataset))

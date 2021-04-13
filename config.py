@@ -1,8 +1,8 @@
 data_root = './data/VOCdevkit/VOC2007/'
-# img_root = 'JPEGimages/'
-img_root = 'temp_image/'
-# annot_root = 'Annotations/'
-annot_root = 'temp_label/'
+img_root = 'JPEGimages/'
+# img_root = 'temp_image/'
+annot_root = 'Annotations/'
+# annot_root = 'temp_label/'
 
 classes = ['person',
            'bird', 'cat', 'cow', 'dog', 'horse', 'sheep',
@@ -19,8 +19,8 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 1
-epochs = 1000
+batch_size = 16
+epochs = 160
 
 lambda_coord = 5
 lambda_noobj = 0.5
@@ -58,3 +58,6 @@ layer2 = [
     (512, 1, 1, 0),
     (1024, 3, 1, 1)
 ]
+
+pretrained_model = "./weights/pretrained/darknet19.pth"
+save_path = "./weights/model"

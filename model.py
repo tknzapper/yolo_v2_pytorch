@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
-from config import *
+import config as cfg
 from utils import *
+from weight_loader import *
 
 
 class CNNBlock(nn.Module):
@@ -28,14 +29,6 @@ class ReorgLayer(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.data.size()
-
-        # ws = self.stride
-        # hs = self.stride
-        # x = x.view(B, C, int(H / hs), hs, int(W / ws), ws).transpose(3, 4).contiguous()
-        # x = x.view(B, C, int(H / hs * W / ws), hs * ws).transpose(2, 3).contiguous()
-        # x = x.view(B, C, hs * ws, int(H /hs), int(W / ws)).transpose(1, 2).contiguous()
-        # x = x.view(B, hs * ws * C, int(H / hs), int(W / ws))
-
         x = x.view(B, C * 4, H // 2, W // 2).contiguous()
 
         return x
@@ -53,17 +46,19 @@ class GlobalAvgPool2d(nn.Module):
         return x
 
 class Darknet19(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=False):
         super(Darknet19, self).__init__()
         self.in_channels = 3
-        self.layer1 = self._make_layers(layer1)
-        self.layer2 = self._make_layers(layer2)
-        self.conv = nn.Conv2d(self.in_channels, num_classes, kernel_size=1, stride=1)
+        self.layer1 = self._make_layers(cfg.layer1)
+        self.layer2 = self._make_layers(cfg.layer2)
+        self.conv = nn.Conv2d(self.in_channels, 1000, kernel_size=1, stride=1)
         self.global_avgpool = GlobalAvgPool2d()
         self.softmax = nn.Softmax(dim=1)
 
-        self.init_weight(self.layer1)
-        self.init_weight(self.layer2)
+        if pretrained:
+            self.load_weights()
+        else:
+            self.initialize_weights()
 
     def forward(self, x):
         x = self.layer1(x)
@@ -88,8 +83,16 @@ class Darknet19(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def init_weight(self, modules):
-        for m in modules:
+    def load_weights(self):
+        weights_file = cfg.pretrained_model
+        assert len(torch.load(weights_file).keys()) == len(self.state_dict().keys())
+        dic = {}
+        for keys, values in zip(self.state_dict().keys(), torch.load(weights_file).values()):
+            dic[keys] = values
+        self.load_state_dict(dic)
+
+    def initialize_weights(self):
+        for m in self.modules:
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
                 if m.bias is not None:
@@ -97,15 +100,12 @@ class Darknet19(nn.Module):
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                nn.init.normal_(m.weight, 0, 0.01)
-                nn.init.constant_(m.bias, 0)
 
 
 class Yolo_v2(nn.Module):
-    def __init__(self):
+    def __init__(self, pretrained=False):
         super(Yolo_v2, self).__init__()
-        darknet19 = Darknet19()
+        darknet19 = Darknet19(pretrained)
         self.num_classes = num_classes
         self.anchors = anchor_box
 
@@ -153,5 +153,6 @@ if __name__ == "__main__":
     from torchsummary import summary
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = Yolo_v2().to(device)
-    summary(model, (3, 416, 416))
+    # model = Yolo_v2().to(device)
+    # summary(model, (3, 416, 416))
+    # net = Darknet19(pretrained=True)

@@ -107,7 +107,7 @@ if __name__ == "__main__":
                               batch_size=batch_size,
                               shuffle=False,
                               collate_fn=detection_collate)
-    model = Yolo_v2().to(device)
+    model = Yolo_v2(pretrained=True).to(device)
     criterion = Loss().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=2e-6)
 
@@ -125,7 +125,7 @@ if __name__ == "__main__":
             outputs = model(inputs)
             # print(outputs.shape)
             loss = criterion(outputs, labels)
-            # print(loss)
+            print(loss)
 
             # loss.backward()
             # optimizer.step()
