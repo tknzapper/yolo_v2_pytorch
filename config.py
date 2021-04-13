@@ -19,18 +19,16 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 2
-
-# object_scale = 5
-# noobject_scale = 1
-# class_scale = 1
-# coord_scale = 1
+batch_size = 1
+epochs = 1000
 
 lambda_coord = 5
 lambda_noobj = 0.5
+
 pw = int(resize / feature_size)
 ph = int(resize / feature_size)
 
+font = './fonts/d2coding.ttf'
 
 layer1 = [
     (32, 3, 1, 1),        # (out_channels, kernel_size)

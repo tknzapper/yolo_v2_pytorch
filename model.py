@@ -41,18 +41,37 @@ class ReorgLayer(nn.Module):
         return x
 
 
+class GlobalAvgPool2d(nn.Module):
+    def __init__(self):
+        super(GlobalAvgPool2d, self).__init__()
+
+    def forward(self, x):
+        B, C, H, W = x.data.size()
+        x = nn.AvgPool2d(x, (H, W))
+        x = x.view(B, C)
+
+        return x
+
 class Darknet19(nn.Module):
     def __init__(self):
         super(Darknet19, self).__init__()
         self.in_channels = 3
         self.layer1 = self._make_layers(layer1)
         self.layer2 = self._make_layers(layer2)
+        self.conv = nn.Conv2d(self.in_channels, num_classes, kernel_size=1, stride=1)
+        self.global_avgpool = GlobalAvgPool2d()
+        self.softmax = nn.Softmax(dim=1)
+
         self.init_weight(self.layer1)
         self.init_weight(self.layer2)
 
     def forward(self, x):
         x = self.layer1(x)
         x = self.layer2(x)
+
+        x = self.conv(x)
+        x = self.global_avgpool(x)
+        x = self.softmax(x)
 
         return x
 
@@ -84,10 +103,9 @@ class Darknet19(nn.Module):
 
 
 class Yolo_v2(nn.Module):
-    def __init__(self, train=False):
+    def __init__(self):
         super(Yolo_v2, self).__init__()
         darknet19 = Darknet19()
-        self.train = train
         self.num_classes = num_classes
         self.anchors = anchor_box
 
@@ -99,14 +117,13 @@ class Yolo_v2(nn.Module):
             CNNBlock(1024, 1024, kernel_size=3, stride=1, padding=1),
             CNNBlock(1024, 1024, kernel_size=3, stride=1, padding=1)
         )
-        # self.downsampler = nn.Sequential(
-        #     CNNBlock(512, 64, kernel_size=1, stride=1)
-        # )
         self.conv4 = nn.Sequential(
             CNNBlock(3072, 1024, kernel_size=3, stride=1, padding=1),
             nn.Conv2d(1024, (5 + self.num_classes) * len(self.anchors), kernel_size=1)
         )
         self.reorg = ReorgLayer()
+        # initialize weight
+        self.init_weight(self.conv3)
         self.init_weight(self.conv4)
 
     def forward(self, x):
