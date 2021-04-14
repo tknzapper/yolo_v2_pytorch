@@ -77,29 +77,6 @@ def box_iou(box1, box2):
     return iou
 
 
-def delta_box(box1, box2):
-    """
-    box size: [batch, grid, anchor, coordinate]
-    :param box1: [cx1, cy1, w1, h1]
-    :param box2: [cx2, cy2, w2, h2]
-    :return: delta(box1, box2)
-    """
-
-    bsize, gsize, asize, _ = box1.size()
-
-    tx = box2[:, :, :, 0] - box1[:, :, :, 0]
-    ty = box2[:, :, :, 1] - box1[:, :, :, 1]
-    tw = box2[:, :, :, 2] / (box1[:, :, :, 2] + 1e-6)
-    th = box2[:, :, :, 3] / (box1[:, :, :, 3] + 1e-6)
-
-    tx = tx.view(bsize, gsize, asize, -1)
-    ty = ty.view(bsize, gsize, asize, -1)
-    tw = tw.view(bsize, gsize, asize, -1)
-    th = th.view(bsize, gsize, asize, -1)
-
-    return torch.cat([tx, ty, tw, th], dim=-1)
-
-
 def generate_anchorbox(box, device="cuda"):
     """
     box size: [batch, grid, anchor, coordinate]

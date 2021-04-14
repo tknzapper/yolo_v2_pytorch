@@ -1,8 +1,7 @@
 data_root = './data/VOCdevkit/VOC2007/'
-img_root = 'JPEGimages/'
-# img_root = 'temp_image/'
+# img_root = 'JPEGimages/'
+img_root = 'temp_image/'
 annot_root = 'Annotations/'
-# annot_root = 'temp_label/'
 
 classes = ['person',
            'bird', 'cat', 'cow', 'dog', 'horse', 'sheep',
@@ -60,4 +59,4 @@ layer2 = [
 ]
 
 pretrained_model = "./weights/pretrained/darknet19.pth"
-save_path = "./weights/model"
+save_path = "./weights/model/"

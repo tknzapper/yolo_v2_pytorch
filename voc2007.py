@@ -12,9 +12,9 @@ import albumentations as A
 
 
 class VOCDataset(Dataset):
-    def __init__(self, data_root, transform, train=True):
-        self.annot_root = data_root + cfg.annot_root
-        self.img_root = data_root + cfg.img_root
+    def __init__(self, img_root, transform, train=True):
+        self.annot_root = cfg.data_root + cfg.annot_root
+        self.img_root = img_root
         self.transform = transform
         self.train = train
 
@@ -38,8 +38,8 @@ class VOCDataset(Dataset):
         image = np.array(Image.open(img_file).convert("RGB"))
 
         if self.train:
-            ann_files = os.listdir(self.annot_root)
-            xml = open(os.path.join(self.annot_root, ann_files[idx]))
+            ann_file = img_files[idx].split('.')[-2] + '.xml'
+            xml = open(os.path.join(self.annot_root, ann_file))
             tree = ET.parse(xml)
             root = tree.getroot()
 
@@ -82,7 +82,7 @@ def detection_collate(batch):
         imgs.append(img)
 
         label = torch.zeros((feature_size, feature_size, (num_classes + 5)))
-
+        # print(sample[1])
         bboxes = sample[1]
         classes = sample[2]
         num_obj = len(bboxes)
@@ -93,9 +93,9 @@ def detection_collate(batch):
             scale_factor = 1 / feature_size
             grid_x_idx = int(bbox[0] // scale_factor)
             grid_y_idx = int(bbox[1] // scale_factor)
-            x_offset = grid_x_idx / scale_factor - grid_x_idx
-            y_offset = grid_y_idx / scale_factor - grid_y_idx
-            label[grid_y_idx, grid_x_idx, num_classes:num_classes+5] = torch.FloatTensor([x_offset, y_offset, bbox[2], bbox[3], objectness])
+            x_offset = bbox[0] / scale_factor - grid_x_idx
+            y_offset = bbox[1] / scale_factor - grid_y_idx
+            label[grid_y_idx, grid_x_idx, num_classes:num_classes+5] = torch.FloatTensor([objectness, x_offset, y_offset, bbox[2], bbox[3]])
             label[grid_y_idx, grid_x_idx, cls] = 1
         targets.append(label)
 
@@ -115,12 +115,16 @@ if __name__ == '__main__':
         A.Normalize(),
     ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
-    train_dataset = VOCDataset(data_root=cfg.data_root,
+    train_root = os.path.join(cfg.data_root, cfg.img_root)
+
+    train_dataset = VOCDataset(img_root=train_root,
                                transform=transform)
     train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=len(train_dataset),
+                              batch_size=1,
                               shuffle=False,
                               collate_fn=detection_collate)
+
+    # print(train_dataset[0])
 
     # for b in range(cfg.batch_size):
     #     img = train_dataset[b][0]
