@@ -6,3 +6,11 @@ __pycache__/
 data/
 
 runs/
+
+weight_loader.py
+
+dataset.py
+
+weights/pretrained/darknet19_448.weights
+
+weights/pretrained/darknet19.weights
