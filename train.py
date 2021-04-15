@@ -1,3 +1,5 @@
+import os
+
 from voc2007 import *
 from torch.utils.data import DataLoader
 from loss import *
@@ -6,7 +8,6 @@ import torch
 import math
 import time
 import albumentations as A
-# from tensorboardX import SummaryWriter
 from torch.utils.tensorboard.writer import SummaryWriter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,9 +43,9 @@ val_loader = DataLoader(dataset=val_dataset,
 
 model = Yolo_v2(pretrained=True).to(device)
 criterion = Loss().to(device)
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
-
+optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
+# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
 iters_per_epoch = math.ceil(len(train_dataset) / cfg.batch_size)
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -64,10 +65,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
         loss_temp += loss.item()
         if (i + 1) % 10 == 0:
             loss_temp /= 10
-            # box_loss_x = box_loss.item()
-            # conf_loss_x = conf_loss.mean().item()
-            # noobj_loss_x = noobj_loss.mean().item()
-            # cls_loss_x = cls_loss.mean().item()
 
             print("[epoch %2d][step %3d/%3d] loss: %.4f" \
                   % (epoch, i, iters_per_epoch, loss))
@@ -86,36 +83,29 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
 def valid(val_loader, model, criterion, epoch):
     model.eval()
+    loss_mean = []
     loss_temp = 0
     for i, (inputs, targets) in enumerate(val_loader, 1):
         inputs = inputs.to(device)
         targets = targets.to(device).float()
         ouputs = model(inputs)
         box_loss, conf_loss, noobj_loss, cls_loss = criterion(ouputs, targets)
-        loss = box_loss.mean() + conf_loss.mean() + noobj_loss.mean() + cls_loss.mean()
+        loss = box_loss + conf_loss + noobj_loss + cls_loss
         loss_temp += loss.item()
         if (i + 1) % 10 == 0:
             loss_temp /= 10
-            box_loss_x = box_loss.mean().item()
-            conf_loss_x = conf_loss.mean().item()
-            noobj_loss_x = noobj_loss.mean().item()
-            cls_loss_x = cls_loss.mean().item()
-
-            n_iter = epoch * iters_per_epoch + i + 1
-            writer.add_scalar("losses/val_loss", loss_temp, n_iter)
-            writer.add_scalar("losses/val_box_loss", box_loss_x, n_iter)
-            writer.add_scalar("losses/val_conf_loss", conf_loss_x, n_iter)
-            writer.add_scalar("losses/val_noobj_loss", noobj_loss_x, n_iter)
-            writer.add_scalar("losses/val_cls_loss", cls_loss_x, n_iter)
-
+            loss_mean.append(loss_temp)
             loss_temp = 0
+    return sum(loss_mean, 0.0) / len(loss_mean)
 
 if __name__ == "__main__":
 
     for epoch in range(cfg.epochs):
         train(train_loader, model, criterion, optimizer, epoch)
-    #     valid(val_loader, model, criterion, epoch)
-        scheduler.step()
+        val_loss = valid(val_loader, model, criterion, epoch)
+        print("val_loss: %.4f" % (val_loss))
+        scheduler.step(val_loss)
+
     t = time.strftime(f'%b%d_%H-%M-%S.pth', time.localtime(time.time()))
     path = os.path.join(cfg.save_path, t)
     torch.save(model, path)

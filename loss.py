@@ -9,6 +9,7 @@ class Loss(nn.Module):
         super(Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='sum')
         self.cross_entropy = nn.CrossEntropyLoss(reduction='sum')
+        self.softmax = nn.Softmax(dim=-1)
         self.feature_size = feature_size
         self.anchor = torch.FloatTensor(anchor_box)
         self.num_classes = num_classes
@@ -23,7 +24,7 @@ class Loss(nn.Module):
         pred_conf = torch.sigmoid(out[:, :, 20:21])
         pred_xy = torch.sigmoid(out[:, :, 21:23])
         pred_wh = torch.exp(out[:, :, 23:25])
-        pred_cls = out[:, :, :20]
+        pred_cls = self.softmax(out[:, :, :20])
         pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
         pred_data = (pred_box, pred_conf, pred_cls)
 
@@ -72,14 +73,14 @@ class Loss(nn.Module):
 
         pred_conf = pred_conf.view(bsize, h * w, len(self.anchor), -1)
         target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-        target_conf[batch, cell_idx, argmax_anchor_idx] = 1.
+        target_conf[batch, cell_idx, argmax_anchor_idx] = max_iou[batch, cell_idx]
 
         pred_cls = pred_cls.view(bsize, h * w, len(self.anchor), -1)
         pred_cls = pred_cls[trans_idx[0], trans_idx[1], anchor_idx[trans_idx[0], trans_idx[1]][0]]
         gt_cls = gt_cls[trans_idx[0], trans_idx[1]]
         gt_cls = torch.max(gt_cls, dim=1)[1].long()
 
-        box_loss = 1 / cfg.batch_size * lambda_coord * self.mse(anc_box * mask, gt_box * mask)
+        box_loss = 1 / cfg.batch_size * lambda_coord * self.mse(anc_box * mask, gt_box * mask) / 2
         conf_loss = 1 / cfg.batch_size * self.mse(pred_conf * mask, target_conf * mask)
         noobj_loss = 1 / cfg.batch_size * lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
         cls_loss = 1 / cfg.batch_size * self.cross_entropy(pred_cls, gt_cls)
@@ -107,15 +108,15 @@ if __name__ == "__main__":
                                transform=transform)
 
     train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=4,
+                              batch_size=1,
                               shuffle=False,
                               collate_fn=detection_collate)
 
     model = Yolo_v2(pretrained=True).to(device)
     criterion = Loss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-6)
+    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
 
-    epochs = 1000
+    epochs = 100
     model.train()
     for epoch in range(epochs):
         for i, data in enumerate(train_loader, 0):
@@ -126,12 +127,10 @@ if __name__ == "__main__":
             optimizer.zero_grad()
 
             outputs = model(inputs)
-            # print(outputs.shape)
+
             box_loss, conf_loss, noobj_loss, cls_loss = criterion(outputs, labels)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
             print(box_loss.item(), conf_loss.item())
-            # print(torch.nonzero(box_loss))
-            # print(box_loss[0, 97, 0, :])
 
             loss.backward()
             optimizer.step()
