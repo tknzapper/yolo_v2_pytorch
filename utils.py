@@ -25,10 +25,10 @@ def xywh2xxyy(box):
     :return: xmin, ymin, xmax, ymax
     """
 
-    xmin = box[0] - (box[2] / 2) + 1
-    ymin = box[1] - (box[3] / 2) + 1
-    xmax = box[0] + (box[2] / 2) + 1
-    ymax = box[1] + (box[3] / 2) + 1
+    xmin = box[0] - (box[2] / 2)
+    ymin = box[1] - (box[3] / 2)
+    xmax = box[0] + (box[2] / 2)
+    ymax = box[1] + (box[3] / 2)
 
     return [xmin, ymin, xmax, ymax]
 
@@ -60,10 +60,10 @@ def box_iou(box1, box2):
     y2max = box2[:, :, :, 1] + box2[:, :, :, 3] / 2
     y2min = box2[:, :, :, 1] - box2[:, :, :, 3] / 2
 
-    xmax = torch.max(x1max, x2max)
-    xmin = torch.min(x1min, x2min)
-    ymax = torch.max(y1max, y2max)
-    ymin = torch.min(y1min, y2min)
+    xmax = torch.minimum(x1max, x2max)
+    xmin = torch.maximum(x1min, x2min)
+    ymax = torch.minimum(y1max, y2max)
+    ymin = torch.maximum(y1min, y2min)
 
     area_intersect = (xmax - xmin) * (ymax - ymin)
     area1 = box1[:, :, :, 2] * box1[:, :, :, 3]
