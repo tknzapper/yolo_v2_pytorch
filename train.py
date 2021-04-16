@@ -44,9 +44,10 @@ val_loader = DataLoader(dataset=val_dataset,
 model = Yolo_v2(pretrained=True).to(device)
 criterion = Loss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
-# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min')
+# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, verbose=True)
 iters_per_epoch = math.ceil(len(train_dataset) / cfg.batch_size)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters_per_epoch, verbose=True)
+
 
 def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
@@ -96,15 +97,33 @@ def valid(val_loader, model, criterion, epoch):
             loss_temp /= 10
             loss_mean.append(loss_temp)
             loss_temp = 0
-    return sum(loss_mean, 0.0) / len(loss_mean)
+    val_loss = sum(loss_mean, 0.0) / len(loss_mean)
+    print("val_loss: %.4f" % (val_loss))
+    writer.add_scalar("losses/val_loss", val_loss, epoch)
+    return val_loss
+
+best_loss = []
+def save_model(model, criterion, val_loss, epoch):
+    t = time.strftime(f'%b%d_%H-%M-%S_{epoch}E.pth', time.localtime(time.time()))
+    PATH = os.path.join(cfg.save_path, t)
+    best_loss.append(val_loss)
+    if min(best_loss) == val_loss:
+        torch.save({
+            'epoch': epoch,
+            'model_stade_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'criterion': criterion,
+        }, PATH)
+        print("Model saved. val_loss: {:.4f}".format(val_loss))
+
 
 if __name__ == "__main__":
 
     for epoch in range(cfg.epochs):
         train(train_loader, model, criterion, optimizer, epoch)
         val_loss = valid(val_loader, model, criterion, epoch)
-        print("val_loss: %.4f" % (val_loss))
-        scheduler.step(val_loss)
+        save_model(model, criterion, val_loss, epoch)
+        scheduler.step()
 
     t = time.strftime(f'%b%d_%H-%M-%S.pth', time.localtime(time.time()))
     path = os.path.join(cfg.save_path, t)
