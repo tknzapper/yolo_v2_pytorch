@@ -43,7 +43,7 @@ out = out.permute(0, 2, 3, 1).contiguous().view(bsize, h * w * 5, 25)
 pred_conf = torch.sigmoid(out[:, :, 20:21])
 pred_xy = torch.sigmoid(out[:, :, 21:23])
 pred_wh = torch.exp(out[:, :, 23:25])
-pred_cls = out[:, :, :20]
+pred_cls = torch.nn.Softmax(dim=-1)(out[:, :, :20])
 pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
 pred_box = pred_box.view(bsize, h * w, 5, -1)
 anc_box = utils.generate_anchorbox(pred_box, device='cpu')

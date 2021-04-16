@@ -8,7 +8,7 @@ class Loss(nn.Module):
     def __init__(self):
         super(Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='sum')
-        self.cross_entropy = nn.CrossEntropyLoss(reduction='sum')
+        self.cross_entropy = nn.CrossEntropyLoss()
         self.softmax = nn.Softmax(dim=-1)
         self.feature_size = feature_size
         self.anchor = torch.FloatTensor(anchor_box)
@@ -24,7 +24,7 @@ class Loss(nn.Module):
         pred_conf = torch.sigmoid(out[:, :, 20:21])
         pred_xy = torch.sigmoid(out[:, :, 21:23])
         pred_wh = torch.exp(out[:, :, 23:25])
-        pred_cls = self.softmax(out[:, :, :20])
+        pred_cls = out[:, :, :20]
         pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
         pred_data = (pred_box, pred_conf, pred_cls)
 
@@ -83,7 +83,7 @@ class Loss(nn.Module):
         box_loss = 1 / cfg.batch_size * lambda_coord * self.mse(anc_box * mask, gt_box * mask) / 2
         conf_loss = 1 / cfg.batch_size * self.mse(pred_conf * mask, target_conf * mask)
         noobj_loss = 1 / cfg.batch_size * lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
-        cls_loss = 1 / cfg.batch_size * self.cross_entropy(pred_cls, gt_cls)
+        cls_loss = self.cross_entropy(pred_cls, gt_cls)
 
         return box_loss, conf_loss, noobj_loss, cls_loss
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
                                transform=transform)
 
     train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=1,
+                              batch_size=4,
                               shuffle=False,
                               collate_fn=detection_collate)
 
@@ -130,7 +130,8 @@ if __name__ == "__main__":
 
             box_loss, conf_loss, noobj_loss, cls_loss = criterion(outputs, labels)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
-            print(box_loss.item(), conf_loss.item())
+            # print(box_loss.item(), conf_loss.item())
+            print(cls_loss.item())
 
             loss.backward()
             optimizer.step()
