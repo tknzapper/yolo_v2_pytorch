@@ -31,7 +31,7 @@ def box_color(num_classes=cfg.num_classes):
 
 BOX_COLOR = box_color()
 
-TEXT_COLOR = (255, 255, 255) # WHITE
+TEXT_COLOR = (0, 0, 0) # BLACK
 
 def visualize_bbox(image, bbox, class_idx, width=3):
     # Visualize a single bounding box on the image

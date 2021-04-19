@@ -44,10 +44,8 @@ val_loader = DataLoader(dataset=val_dataset,
 model = Yolo_v2(pretrained=True).to(device)
 criterion = Loss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
-# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, verbose=True)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, verbose=True)
 iters_per_epoch = math.ceil(len(train_dataset) / cfg.batch_size)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=iters_per_epoch, verbose=True)
-
 
 def train(train_loader, model, criterion, optimizer, epoch):
     model.train()
@@ -73,12 +71,13 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   % (box_loss, conf_loss, noobj_loss, cls_loss))
             print()
 
-            n_iter = epoch * iters_per_epoch + i + 1
-            writer.add_scalar("losses/loss", loss_temp, n_iter)
-            writer.add_scalar("losses/box_loss", box_loss, n_iter)
-            writer.add_scalar("losses/conf_loss", conf_loss, n_iter)
-            writer.add_scalar("losses/noobj_loss", noobj_loss, n_iter)
-            writer.add_scalar("losses/cls_loss", cls_loss, n_iter)
+            if epoch > 0:
+                n_iter = (epoch - 1) * iters_per_epoch + i + 1
+                writer.add_scalar("losses/loss", loss_temp, n_iter)
+                writer.add_scalar("losses/box_loss", box_loss, n_iter)
+                writer.add_scalar("losses/conf_loss", conf_loss, n_iter)
+                writer.add_scalar("losses/noobj_loss", noobj_loss, n_iter)
+                writer.add_scalar("losses/cls_loss", cls_loss, n_iter)
 
             loss_temp = 0
 
@@ -103,17 +102,11 @@ def valid(val_loader, model, criterion, epoch):
     return val_loss
 
 best_loss = []
-def save_model(model, criterion, val_loss, epoch):
-    t = time.strftime(f'%b%d_%H-%M-%S_{epoch}E.pth', time.localtime(time.time()))
-    PATH = os.path.join(cfg.save_path, t)
+def save_model(model, val_loss):
+    PATH = os.path.join(cfg.save_path, 'model.pth')
     best_loss.append(val_loss)
     if min(best_loss) == val_loss:
-        torch.save({
-            'epoch': epoch,
-            'model_stade_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'criterion': criterion,
-        }, PATH)
+        torch.save(model, PATH)
         print("Model saved. val_loss: {:.4f}".format(val_loss))
 
 
@@ -122,9 +115,5 @@ if __name__ == "__main__":
     for epoch in range(cfg.epochs):
         train(train_loader, model, criterion, optimizer, epoch)
         val_loss = valid(val_loader, model, criterion, epoch)
-        save_model(model, criterion, val_loss, epoch)
+        save_model(model, val_loss)
         scheduler.step()
-
-    t = time.strftime(f'%b%d_%H-%M-%S.pth', time.localtime(time.time()))
-    path = os.path.join(cfg.save_path, t)
-    torch.save(model, path)

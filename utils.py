@@ -70,7 +70,7 @@ def box_iou(box1, box2):
     area2 = box2[:, :, :, 2] * box2[:, :, :, 3]
     area_union = area1 + area2 - area_intersect
 
-    iou = area_intersect / area_union
+    iou = area_intersect / (area_union + 1e-6)
     iou = torch.where(iou >= 0, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
     iou = torch.where(iou <= 1, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
 

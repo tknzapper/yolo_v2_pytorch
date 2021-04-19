@@ -9,7 +9,7 @@ import visualize as vis
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-PATH = os.path.join(cfg.save_path, os.listdir(cfg.save_path)[0])
+PATH = os.path.join(cfg.save_path, 'model.pth')
 
 model = torch.load(PATH)
 model = model.to(device)
@@ -27,34 +27,34 @@ denorm = A.Compose([
 test_root = cfg.data_root + 'Images/Test/'
 test_dataset = voc.VOCDataset(img_root=test_root, transform=trans)
 
-image = test_dataset[0][0]
-trans_img = denorm(image=image)
-im = trans_img['image'].astype(np.uint8)
+for i in range(len(test_dataset)):
+    image = test_dataset[i][0]
+    trans_img = denorm(image=image)
+    im = trans_img['image'].astype(np.uint8)
 
-img = torch.from_numpy(test_dataset[0][0])
-img = img.permute(2, 0, 1).contiguous()
-img = torch.unsqueeze(img, 0)
-img = img.to(device)
+    img = torch.from_numpy(test_dataset[i][0])
+    img = img.permute(2, 0, 1).contiguous()
+    img = torch.unsqueeze(img, 0)
+    img = img.to(device)
 
-out = model(img).detach().cpu()
-bsize, _, h, w = out.size()
-out = out.permute(0, 2, 3, 1).contiguous().view(bsize, h * w * 5, 25)
+    out = model(img).detach().cpu()
+    bsize, _, h, w = out.size()
+    out = out.permute(0, 2, 3, 1).contiguous().view(bsize, h * w * 5, 25)
 
-pred_conf = torch.sigmoid(out[:, :, 20:21])
-pred_xy = torch.sigmoid(out[:, :, 21:23])
-pred_wh = torch.exp(out[:, :, 23:25])
-pred_cls = torch.nn.Softmax(dim=-1)(out[:, :, :20])
-pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-pred_box = pred_box.view(bsize, h * w, 5, -1)
-anc_box = utils.generate_anchorbox(pred_box, device='cpu')
-anc_box = anc_box.view(bsize, h * w * 5, -1)
+    pred_conf = torch.sigmoid(out[:, :, 20])
+    pred_xy = torch.sigmoid(out[:, :, 21:23])
+    pred_wh = torch.exp(out[:, :, 23:25])
+    pred_cls = torch.nn.Softmax(dim=-1)(out[:, :, :20])
+    pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
+    pred_box = pred_box.view(bsize, h * w, 5, -1)
+    anc_box = utils.generate_anchorbox(pred_box, device='cpu')
+    anc_box = anc_box.view(bsize, h * w * 5, -1)
 
-confIdx = torch.where(torch.sigmoid(out[:, :, 20]) > 0.2)
+    confIdx = torch.where(pred_conf > 0.01)
 
-box = anc_box[confIdx[0], confIdx[1], :]
-box = box.tolist()
+    box = anc_box[confIdx[0], confIdx[1], :]
+    box = box.tolist()
 
-cls = pred_cls[confIdx[0], confIdx[1], :]
-_, cls = torch.max(cls, dim=-1)
+    _, cls = torch.max(pred_cls[confIdx[0], confIdx[1], :], dim=-1)
 
-vis.visualize(im, box, cls)
+    vis.visualize(im, box, cls)
