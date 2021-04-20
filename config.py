@@ -18,9 +18,9 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 12
+batch_size = 16
 epochs = 160
-lr = 1e-6
+lr = 1e-4
 
 lambda_coord = 5
 lambda_noobj = 0.5
