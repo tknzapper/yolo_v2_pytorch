@@ -50,15 +50,15 @@ def box_iou(box1, box2):
     :return:
     """
 
-    x1max = box1[:, :, :, 0] + box1[:, :, :, 2] / 2
-    x1min = box1[:, :, :, 0] - box1[:, :, :, 2] / 2
-    y1max = box1[:, :, :, 1] + box1[:, :, :, 3] / 2
-    y1min = box1[:, :, :, 1] - box1[:, :, :, 3] / 2
+    x1max = box1[..., 0] + box1[..., 2] / 2
+    x1min = box1[..., 0] - box1[..., 2] / 2
+    y1max = box1[..., 1] + box1[..., 3] / 2
+    y1min = box1[..., 1] - box1[..., 3] / 2
 
-    x2max = box2[:, :, :, 0] + box2[:, :, :, 2] / 2
-    x2min = box2[:, :, :, 0] - box2[:, :, :, 2] / 2
-    y2max = box2[:, :, :, 1] + box2[:, :, :, 3] / 2
-    y2min = box2[:, :, :, 1] - box2[:, :, :, 3] / 2
+    x2max = box2[..., 0] + box2[..., 2] / 2
+    x2min = box2[..., 0] - box2[..., 2] / 2
+    y2max = box2[..., 1] + box2[..., 3] / 2
+    y2min = box2[..., 1] - box2[..., 3] / 2
 
     xmax = torch.minimum(x1max, x2max)
     xmin = torch.maximum(x1min, x2min)
@@ -66,15 +66,11 @@ def box_iou(box1, box2):
     ymin = torch.maximum(y1min, y2min)
 
     area_intersect = (xmax - xmin) * (ymax - ymin)
-    area1 = box1[:, :, :, 2] * box1[:, :, :, 3]
-    area2 = box2[:, :, :, 2] * box2[:, :, :, 3]
+    area1 = box1[..., 2] * box1[..., 3]
+    area2 = box2[..., 2] * box2[..., 3]
     area_union = area1 + area2 - area_intersect
 
-    iou = area_intersect / (area_union + 1e-6)
-    iou = torch.where(iou >= 0, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
-    iou = torch.where(iou <= 1, iou, iou.new_zeros((iou.size(0), iou.size(1), iou.size(2))))
-
-    return iou
+    return area_intersect / (area_union + 1e-6)
 
 
 def generate_anchorbox(box, device="cuda"):
@@ -86,6 +82,6 @@ def generate_anchorbox(box, device="cuda"):
 
     anchor = torch.FloatTensor(anchor_box).to(device)
 
-    box[:, :, :, 2:4] *= anchor[:, 0:2]
+    box[..., 2:4] *= anchor[..., 0:2]
 
     return box

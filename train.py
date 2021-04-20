@@ -25,11 +25,13 @@ train_root = cfg.data_root + 'Images/Train/'
 valid_root = cfg.data_root + 'Images/Validation/'
 test_root = cfg.data_root + 'Images/Test/'
 
+root = os.path.join(cfg.data_root, cfg.img_root)
+
 train_dataset = VOCDataset(img_root=train_root,
                            transform=transform)
 
 train_loader = DataLoader(dataset=train_dataset,
-                          batch_size=batch_size,
+                          batch_size=cfg.batch_size,
                           shuffle=True,
                           collate_fn=detection_collate)
 
@@ -44,7 +46,7 @@ val_loader = DataLoader(dataset=val_dataset,
 model = Yolo_v2(pretrained=True).to(device)
 criterion = Loss().to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=20, verbose=True)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=60, gamma=0.1, verbose=True)
 iters_per_epoch = math.ceil(len(train_dataset) / cfg.batch_size)
 
 def train(train_loader, model, criterion, optimizer, epoch):
@@ -54,6 +56,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
         inputs = inputs.to(device)
         targets = targets.to(device).float()
         ouputs = model(inputs)
+
         box_loss, conf_loss, noobj_loss, cls_loss = criterion(ouputs, targets)
         loss = box_loss + conf_loss + noobj_loss + cls_loss
 
@@ -71,7 +74,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                   % (box_loss, conf_loss, noobj_loss, cls_loss))
             print()
 
-            if epoch > 0:
+            if epoch > 30:
                 n_iter = (epoch - 1) * iters_per_epoch + i + 1
                 writer.add_scalar("losses/loss", loss_temp, n_iter)
                 writer.add_scalar("losses/box_loss", box_loss, n_iter)
@@ -117,3 +120,5 @@ if __name__ == "__main__":
         val_loss = valid(val_loader, model, criterion, epoch)
         save_model(model, val_loss)
         scheduler.step()
+    # PATH = os.path.join(cfg.save_path, 'model.pth')
+    # torch.save(model, PATH)
