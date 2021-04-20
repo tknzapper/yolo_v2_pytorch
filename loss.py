@@ -17,76 +17,69 @@ class Loss(nn.Module):
 
     def forward(self, prediction, target):
         bsize, _, h, w = prediction.size()
-        out = prediction.permute(0, 2, 3, 1).contiguous().view(bsize, h * w * len(self.anchor), 5 + self.num_classes)
-        target = target.view(bsize, h * w, 5 + self.num_classes).contiguous()
+        out = prediction.permute(0, 2, 3, 1).contiguous().view(bsize, h, w, len(self.anchor), 5 + self.num_classes)
+        target.unsqueeze_(3)
 
         # sorting prediction data
-        pred_conf = torch.sigmoid(out[:, :, 20:21])
-        pred_xy = torch.sigmoid(out[:, :, 21:23])
-        pred_wh = torch.exp(out[:, :, 23:25])
-        pred_cls = out[:, :, :20]
+        pred_conf = torch.sigmoid(out[..., 20])
+        pred_xy = torch.sigmoid(out[..., 21:23])
+        pred_wh = torch.exp(out[..., 23:25])
+        pred_cls = out[..., :20]
         pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-        pred_data = (pred_box, pred_conf, pred_cls)
+        generate_anchorbox(pred_box)
 
         # sorting target data
-        gt_conf = target[:, :, 20:21]
-        gt_xy = target[:, :, 21:23]
-        gt_wh = target[:, :, 23:25]
-        gt_cls = target[:, :, :20]
+        gt_conf = target[..., 20]
+        gt_xy = target[..., 21:23]
+        gt_wh = target[..., 23:25]
+        gt_cls = target[..., :20]
         gt_box = torch.cat([gt_xy, gt_wh], dim=-1)
-        gt_data = (gt_box, gt_conf, gt_cls)
 
+        # get gt index
+        idx = torch.where(gt_conf > 0)
+        batch = idx[0].T
+        grid_y_idx = idx[1].T
+        grid_x_idx = idx[2].T
 
-        return self._calc_loss(pred_data, gt_data, h, w)
+        # get best anchor box index
+        iou = box_iou(pred_box, gt_box)
+        argmax_idx = torch.argmax(iou, dim=-1, keepdim=True)
+        argmax_anchor_idx = argmax_idx[batch, grid_y_idx, grid_x_idx].T
 
+        # for non-object
+        inv = 1 - gt_conf
+        noobj_idx = torch.where(inv > 0)
+        noobj_batch = noobj_idx[0].T
+        noobj_grid_y = noobj_idx[1].T
+        noobj_grid_x = noobj_idx[2].T
+        noobj_anchor_idx = argmax_idx[noobj_batch, noobj_grid_y, noobj_grid_x].T
 
-    def _calc_loss(self, pred_data, gt_data, h, w):
-        pred_box = pred_data[0]
-        pred_conf = pred_data[1]
-        pred_cls = pred_data[2]
+        # localization loss
+        pred_box = pred_box[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
+        pred_box.squeeze_(0)
+        gt_box = gt_box[batch, grid_y_idx, grid_x_idx, 0]
+        box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box, gt_box)
 
-        gt_box = gt_data[0]
-        gt_conf = gt_data[1]
-        gt_cls = gt_data[2]
+        # confidence loss
+        obj_pred_conf = pred_conf[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
+        obj_pred_conf.squeeze_(0)
+        obj_gt_conf = gt_conf[batch, grid_y_idx, grid_x_idx, 0]
+        conf_loss = 1 / batch_size * self.mse(obj_pred_conf, obj_gt_conf)
 
-        bsize = pred_box.size(0)
-        pred_box = pred_box.view(bsize, h * w, len(self.anchor), -1)
-        anc_box = generate_anchorbox(pred_box)
-        gt_box = gt_box.view(bsize, h * w, 1, -1)
+        # noobject loss
+        noobj_pred_conf = pred_conf[noobj_batch, noobj_grid_y, noobj_grid_x, noobj_anchor_idx]
+        noobj_pred_conf.squeeze_(0)
+        noobj_gt_conf = gt_conf[noobj_batch, noobj_grid_y, noobj_grid_x, 0]
+        noobj_loss = 1 / batch_size * lambda_noobj * self.mse(noobj_pred_conf, noobj_gt_conf)
 
-        iou = box_iou(anc_box, gt_box)
-        max_iou, anchor_idx = torch.max(iou, dim=-1, keepdim=True)
-        max_iou = max_iou.view(bsize, h * w, -1)
-        anchor_idx = anchor_idx.view(bsize, h * w, -1)
-
-        idx = torch.nonzero(gt_conf.view(bsize, h * w))
-        batch = idx[:, 0].long()
-        cell_idx = idx[:, 1].long()
-        trans_idx = idx.T
-        batch.unsqueeze_(1)
-        cell_idx.unsqueeze_(1)
-        argmax_anchor_idx = anchor_idx[batch, cell_idx].squeeze(2)
-
-        mask = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-        mask[batch, cell_idx, argmax_anchor_idx] = gt_conf[batch, cell_idx]
-        mask = mask.int() >= 1
-
-        pred_conf = pred_conf.view(bsize, h * w, len(self.anchor), -1)
-        target_conf = pred_box.new_zeros(bsize, h * w, len(self.anchor), 1)
-        target_conf[batch, cell_idx, argmax_anchor_idx] = max_iou[batch, cell_idx]
-
-        pred_cls = pred_cls.view(bsize, h * w, len(self.anchor), -1)
-        pred_cls = pred_cls[trans_idx[0], trans_idx[1], anchor_idx[trans_idx[0], trans_idx[1]][0]]
-        gt_cls = gt_cls[trans_idx[0], trans_idx[1]]
-        gt_cls = torch.max(gt_cls, dim=1)[1].long()
-
-        box_loss = 1 / cfg.batch_size * lambda_coord * self.mse(anc_box * mask, gt_box * mask) / 2
-        conf_loss = 1 / cfg.batch_size * self.mse(pred_conf * mask, target_conf * mask)
-        noobj_loss = 1 / cfg.batch_size * lambda_noobj * self.mse(pred_conf * ~mask, target_conf * ~mask)
+        # classification loss
+        pred_cls = pred_cls[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
+        pred_cls.squeeze_(0)
+        gt_cls = gt_cls[batch, grid_y_idx, grid_x_idx, 0]
+        gt_cls = torch.max(gt_cls, dim=1)[1]
         cls_loss = self.cross_entropy(pred_cls, gt_cls)
 
         return box_loss, conf_loss, noobj_loss, cls_loss
-
 
 if __name__ == "__main__":
     from voc2007 import *
@@ -108,7 +101,7 @@ if __name__ == "__main__":
                                transform=transform)
 
     train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=4,
+                              batch_size=len(train_dataset),
                               shuffle=False,
                               collate_fn=detection_collate)
 
@@ -131,12 +124,12 @@ if __name__ == "__main__":
             box_loss, conf_loss, noobj_loss, cls_loss = criterion(outputs, labels)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
             # print(box_loss.item(), conf_loss.item())
-            print(cls_loss.item())
+            # print(cls_loss.item())
 
             loss.backward()
             optimizer.step()
 
-            # break
-        # break
+            break
+        break
 
 
