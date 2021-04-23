@@ -18,12 +18,14 @@ anchor_box = [(1.3221, 1.73145),
               (11.2364, 10.0071)]
 
 resize = 416
-batch_size = 16
-epochs = 160
-lr = 1e-4
+batch_size = 12
+epochs = 500
+lr = 1e-5
 
 lambda_coord = 5
-lambda_noobj = 0.5
+lambda_obj = 1
+lambda_noobj = 1
+lambda_cls = 1
 
 pw = int(resize / feature_size)
 ph = int(resize / feature_size)

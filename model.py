@@ -29,7 +29,13 @@ class ReorgLayer(nn.Module):
 
     def forward(self, x):
         B, C, H, W = x.data.size()
-        x = x.view(B, C * 4, H // 2, W // 2).contiguous()
+        # x = x.view(B, C * 4, H // 2, W // 2).contiguous()
+        ws = self.stride
+        hs = self.stride
+        x = x.view(B, C, int(H / hs), hs, int(W / ws), ws).transpose(3, 4).contiguous()
+        x = x.view(B, C, int(H / hs * W / ws), hs * ws).transpose(2, 3).contiguous()
+        x = x.view(B, C, hs * ws, int(H / hs), int(W / ws)).transpose(1, 2).contiguous()
+        x = x.view(B, hs * ws * C, int(H / hs), int(W / ws))
 
         return x
 
@@ -55,7 +61,7 @@ class Darknet19(nn.Module):
         self.global_avgpool = GlobalAvgPool2d()
         self.softmax = nn.Softmax(dim=1)
 
-        if pretrained:
+        if pretrained == True:
             self.load_weights()
         else:
             self.initialize_weights()
@@ -92,7 +98,7 @@ class Darknet19(nn.Module):
         self.load_state_dict(dic)
 
     def initialize_weights(self):
-        for m in self.modules:
+        for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='leaky_relu')
                 if m.bias is not None:

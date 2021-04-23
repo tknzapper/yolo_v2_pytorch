@@ -35,7 +35,8 @@ TEXT_COLOR = (0, 0, 0) # BLACK
 
 def visualize_bbox(image, bbox, class_idx, width=3):
     # Visualize a single bounding box on the image
-    xmin, ymin, xmax, ymax = utils.xywh2xxyy(bbox)
+    # xmin, ymin, xmax, ymax = utils.xywh2xxyy(bbox)
+    xmin, ymin, xmax, ymax = bbox
 
     if isinstance(image, np.ndarray):
         img = Image.fromarray(image)

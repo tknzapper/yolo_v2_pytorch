@@ -9,13 +9,13 @@ def xxyy2xywh(box):
     :param box: xmin, ymin, xmax, ymax
     :return: cx, cy, w, h
     """
+    box_ = box.clone()
+    box[..., 0] = (box_[..., 2] + box_[..., 0]) / 2
+    box[..., 1] = (box_[..., 3] + box_[..., 1]) / 2
+    box[..., 2] = box_[..., 2] - box_[..., 0]
+    box[..., 3] = box_[..., 3] - box_[..., 1]
 
-    cx = (box[2] + box[0]) / 2 - 1
-    cy = (box[3] + box[1]) / 2 - 1
-    w = box[2] - box[0]
-    h = box[3] - box[1]
-
-    return [cx, cy, w, h]
+    return box
 
 
 def xywh2xxyy(box):
@@ -24,20 +24,11 @@ def xywh2xxyy(box):
     :param box: cx, cy, w, h
     :return: xmin, ymin, xmax, ymax
     """
-
-    xmin = box[0] - (box[2] / 2)
-    ymin = box[1] - (box[3] / 2)
-    xmax = box[0] + (box[2] / 2)
-    ymax = box[1] + (box[3] / 2)
-
-    return [xmin, ymin, xmax, ymax]
-
-
-def normalize(box, w, h):
-    box[0] /= w
-    box[1] /= h
-    box[2] /= w
-    box[3] /= h
+    box_ = box.clone()
+    box[..., 0] = box_[..., 0] - (box_[..., 2] / 2)
+    box[..., 1] = box_[..., 1] - (box_[..., 3] / 2)
+    box[..., 2] = box_[..., 0] + (box_[..., 2] / 2)
+    box[..., 3] = box_[..., 1] + (box_[..., 3] / 2)
 
     return box
 
@@ -49,28 +40,27 @@ def box_iou(box1, box2):
     :param box2: [cx2, cy2, w2, h2]
     :return:
     """
+    box1_ = box1.clone()
+    box2_ = box2.clone()
+    xywh2xxyy(box1_)
+    xywh2xxyy(box2_)
 
-    x1max = box1[..., 0] + box1[..., 2] / 2
-    x1min = box1[..., 0] - box1[..., 2] / 2
-    y1max = box1[..., 1] + box1[..., 3] / 2
-    y1min = box1[..., 1] - box1[..., 3] / 2
+    xmin = torch.maximum(box1_[..., 0], box2_[..., 0])
+    ymin = torch.maximum(box1_[..., 1], box2_[..., 1])
+    xmax = torch.minimum(box1_[..., 2], box2_[..., 2])
+    ymax = torch.minimum(box1_[..., 3], box2_[..., 3])
 
-    x2max = box2[..., 0] + box2[..., 2] / 2
-    x2min = box2[..., 0] - box2[..., 2] / 2
-    y2max = box2[..., 1] + box2[..., 3] / 2
-    y2min = box2[..., 1] - box2[..., 3] / 2
+    W = xmax - xmin
+    H = ymax - ymin
+    W = torch.where(W > 0, W, torch.zeros_like(W))
+    H = torch.where(H > 0, H, torch.zeros_like(H))
 
-    xmax = torch.minimum(x1max, x2max)
-    xmin = torch.maximum(x1min, x2min)
-    ymax = torch.minimum(y1max, y2max)
-    ymin = torch.maximum(y1min, y2min)
-
-    area_intersect = (xmax - xmin) * (ymax - ymin)
+    area_intersect = W * H
     area1 = box1[..., 2] * box1[..., 3]
     area2 = box2[..., 2] * box2[..., 3]
     area_union = area1 + area2 - area_intersect
 
-    return area_intersect / (area_union + 1e-6)
+    return area_intersect / (area_union + 1e-4)
 
 
 def generate_anchorbox(box, device="cuda"):

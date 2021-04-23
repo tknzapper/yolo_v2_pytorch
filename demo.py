@@ -1,4 +1,5 @@
 import torch
+from torchvision.ops import nms
 import config as cfg
 import os
 import albumentations as A
@@ -6,13 +7,14 @@ import voc2007 as voc
 import numpy as np
 import utils
 import visualize as vis
+from model import Yolo_v2
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 
 PATH = os.path.join(cfg.save_path, 'model.pth')
 
-model = torch.load(PATH)
-model = model.to(device)
+model = Yolo_v2(pretrained=True)
+model.load_state_dict(torch.load(PATH, map_location=device))
 model.eval()
 
 trans = A.Compose([
@@ -47,29 +49,40 @@ for i in range(len(test_dataset)):
     pred_wh = torch.exp(out[..., 23:25])
     pred_cls = torch.nn.Softmax(dim=-1)(out[..., :20])
     pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-    utils.generate_anchorbox(pred_box, device='cpu')
-
     scale_factor = 1 / cfg.feature_size
     idx = torch.where(pred_conf > 0.9)
+    num_obj = idx[0].size(0)
+    # print(num_obj)
     batch = idx[0].T
     grid_y_idx = idx[1].T
     grid_x_idx = idx[2].T
     anchor_idx = idx[3].T
-    objects = pred_box[batch, grid_y_idx, grid_x_idx, anchor_idx]
+    utils.generate_anchorbox(pred_box, device)
 
-    boxes = []
-    for i in range(objects.size(0)):
-        cx = (objects[i][0].item() + grid_x_idx[i].item()) * scale_factor
-        cy = (objects[i][1].item() + grid_y_idx[i].item()) * scale_factor
-        w = objects[i][2].item()
-        h = objects[i][3].item()
-        box = [cx, cy, w, h]
-        # print(box)
-        boxes.append(box)
+    bbox = pred_box[batch, grid_y_idx, grid_x_idx, anchor_idx]
+    score = pred_conf[batch, grid_y_idx, grid_x_idx, anchor_idx]
+    classes = torch.argmax(pred_cls[batch, grid_y_idx, grid_x_idx, anchor_idx], dim=-1)
+    # print(pred_box[0, 7, 6])
+    # print(pred_conf[0, 7, 6])
+    # print(torch.argmax(pred_cls[0, 7, 6], dim=-1))
+    cx = (bbox[:, 0] + grid_x_idx) * scale_factor
+    cy = (bbox[:, 1] + grid_y_idx) * scale_factor
+    w = bbox[:, 2] * scale_factor
+    h = bbox[:, 3] * scale_factor
 
-    cls = pred_cls[batch, grid_y_idx, grid_x_idx, anchor_idx]
-    _, cls = torch.max(cls, dim=-1)
+    xmin = torch.zeros_like(cx)
+    ymin = torch.zeros_like(cy)
+    xmax = torch.ones_like(cx)
+    ymax = torch.ones_like(cy)
+    for i in range(num_obj):
+        xmin[i] = cx[i] - (w[i] / 2) if cx[i] - (w[i] / 2) > 0 else 0
+        ymin[i] = cy[i] - (h[i] / 2) if cy[i] - (h[i] / 2) > 0 else 0
+        xmax[i] = cx[i] + (w[i] / 2) if cx[i] + (w[i] / 2) < 1 else 1
+        ymax[i] = cy[i] + (h[i] / 2) if cy[i] + (h[i] / 2) < 1 else 1
 
-    vis.visualize(im, boxes, cls)
+    bbox = torch.cat([xmin.unsqueeze_(1), ymin.unsqueeze_(1), xmax.unsqueeze_(1), ymax.unsqueeze_(1)], dim=1)
+    idx_nms = nms(bbox, score, iou_threshold=0.3)
+
+    vis.visualize(im, bbox[idx_nms], classes[idx_nms])
 
     break

@@ -46,21 +46,21 @@ class VOCDataset(Dataset):
             height = float(size.find("height").text)
             # print(width, height)
 
-            bboxes = []
-            classes = []
             objs = root.findall("object")
+            num_objs = len(objs)
+            bbox = torch.zeros((num_objs, 4))
+            classes = torch.zeros((num_objs))
             for i, obj in enumerate(objs):
-                bbox = obj.find('bndbox')
-                x1 = int(bbox.find('xmin').text)
-                y1 = int(bbox.find('ymin').text)
-                x2 = int(bbox.find('xmax').text)
-                y2 = int(bbox.find('ymax').text)
+                box = obj.find('bndbox')
+                x1 = int(box.find('xmin').text) + 1
+                y1 = int(box.find('ymin').text) + 1
+                x2 = int(box.find('xmax').text) - 1
+                y2 = int(box.find('ymax').text) - 1
                 cls = cfg.classes.index(obj.find('name').text)
-                bbox_xywh = utils.xxyy2xywh([x1, y1, x2, y2])
-                bbox_xywh_norm = utils.normalize(bbox_xywh, width, height)
-                bboxes.append(bbox_xywh_norm)
-                classes.append(cls)
-            transformed = self.transform(image=image, bboxes=bboxes, class_labels=classes)
+                bbox[i, :] = torch.FloatTensor([x1/width, y1/height, x2/width, y2/height])
+                classes[i] = cls
+            utils.xxyy2xywh(bbox)
+            transformed = self.transform(image=image, bboxes=bbox, class_labels=classes)
             return transformed["image"], transformed["bboxes"], transformed["class_labels"]
         else:
             transformed = self.transform(image=image)
@@ -80,20 +80,21 @@ def detection_collate(batch):
         imgs.append(img)
 
         label = torch.zeros((feature_size, feature_size, (num_classes + 5)))
-        # print(sample[1])
         bboxes = sample[1]
         classes = sample[2]
         num_obj = len(bboxes)
         for objs in range(num_obj):
             bbox = bboxes[objs]
-            cls = classes[objs]
+            cls = classes[objs].long()
             objectness = 1
             scale_factor = 1 / feature_size
             grid_x_idx = int(bbox[0] // scale_factor)
             grid_y_idx = int(bbox[1] // scale_factor)
             x_offset = bbox[0] / scale_factor - grid_x_idx
             y_offset = bbox[1] / scale_factor - grid_y_idx
-            label[grid_y_idx, grid_x_idx, num_classes:num_classes+5] = torch.FloatTensor([objectness, x_offset, y_offset, bbox[2], bbox[3]])
+            w = bbox[2] / scale_factor
+            h = bbox[3] / scale_factor
+            label[grid_y_idx, grid_x_idx, num_classes:num_classes+5] = torch.FloatTensor([objectness, x_offset, y_offset, w, h])
             label[grid_y_idx, grid_x_idx, cls] = 1
         targets.append(label)
 
@@ -113,16 +114,16 @@ if __name__ == '__main__':
         A.Normalize(),
     ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
-    train_root = os.path.join(cfg.data_root, cfg.img_root)
+    train_root = os.path.join(cfg.data_root, 'Images/Test/')
 
     train_dataset = VOCDataset(img_root=train_root,
                                transform=transform)
     train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=1,
+                              batch_size=len(train_dataset),
                               shuffle=False,
                               collate_fn=detection_collate)
 
-    # print(train_dataset[0])
+    # train_dataset[0]
 
     # for b in range(cfg.batch_size):
     #     img = train_dataset[b][0]

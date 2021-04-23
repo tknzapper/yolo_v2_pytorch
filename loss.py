@@ -4,16 +4,16 @@ import torch
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Loss(nn.Module):
     def __init__(self):
         super(Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='sum')
-        self.cross_entropy = nn.CrossEntropyLoss()
-        self.softmax = nn.Softmax(dim=-1)
+        # self.bce = nn.BCELoss(reduction='sum')
+        self.cel = nn.CrossEntropyLoss()
         self.feature_size = feature_size
         self.anchor = torch.FloatTensor(anchor_box)
         self.num_classes = num_classes
-
 
     def forward(self, prediction, target):
         bsize, _, h, w = prediction.size()
@@ -23,10 +23,9 @@ class Loss(nn.Module):
         # sorting prediction data
         pred_conf = torch.sigmoid(out[..., 20])
         pred_xy = torch.sigmoid(out[..., 21:23])
-        pred_wh = torch.exp(out[..., 23:25])
+        pred_wh = torch.exp(out[..., 23:25]) * self.anchor[..., 0:2].to(device)
         pred_cls = out[..., :20]
         pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-        generate_anchorbox(pred_box)
 
         # sorting target data
         gt_conf = target[..., 20]
@@ -36,10 +35,11 @@ class Loss(nn.Module):
         gt_box = torch.cat([gt_xy, gt_wh], dim=-1)
 
         # get gt index
-        idx = torch.where(gt_conf > 0)
-        batch = idx[0].T
-        grid_y_idx = idx[1].T
-        grid_x_idx = idx[2].T
+        idx = torch.nonzero(gt_conf)
+        num_obj = len(idx)
+        batch = idx[:, 0].T
+        grid_y_idx = idx[:, 1].T
+        grid_x_idx = idx[:, 2].T
 
         # get best anchor box index
         iou = box_iou(pred_box, gt_box)
@@ -48,38 +48,42 @@ class Loss(nn.Module):
 
         # for non-object
         inv = 1 - gt_conf
-        noobj_idx = torch.where(inv > 0)
-        noobj_batch = noobj_idx[0].T
-        noobj_grid_y = noobj_idx[1].T
-        noobj_grid_x = noobj_idx[2].T
+        noobj_idx = torch.nonzero(inv)
+        num_nonobj = len(noobj_idx)
+        noobj_batch = noobj_idx[:, 0].T
+        noobj_grid_y = noobj_idx[:, 1].T
+        noobj_grid_x = noobj_idx[:, 2].T
         noobj_anchor_idx = argmax_idx[noobj_batch, noobj_grid_y, noobj_grid_x].T
 
         # localization loss
-        pred_box = pred_box[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
-        pred_box.squeeze_(0)
-        gt_box = gt_box[batch, grid_y_idx, grid_x_idx, 0]
-        box_loss = 1 / batch_size * lambda_coord * self.mse(pred_box, gt_box)
+        bbox_pred = pred_box[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
+        bbox_pred.squeeze_(0)
+        bbox_gt = gt_box[batch, grid_y_idx, grid_x_idx, 0]
+        box_loss = 1 / batch_size * lambda_coord * self.mse(bbox_pred, bbox_gt)
+        # print(bbox_pred.tolist()[0])
 
-        # confidence loss
+        # object loss
         obj_pred_conf = pred_conf[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
         obj_pred_conf.squeeze_(0)
         obj_gt_conf = gt_conf[batch, grid_y_idx, grid_x_idx, 0]
-        conf_loss = 1 / batch_size * self.mse(obj_pred_conf, obj_gt_conf)
+        conf_loss = 1 / num_obj * lambda_obj * self.mse(obj_pred_conf, obj_gt_conf)
+        # print(obj_pred_conf.tolist()[0])
 
-        # noobject loss
+        # non-object loss
         noobj_pred_conf = pred_conf[noobj_batch, noobj_grid_y, noobj_grid_x, noobj_anchor_idx]
         noobj_pred_conf.squeeze_(0)
-        noobj_gt_conf = gt_conf[noobj_batch, noobj_grid_y, noobj_grid_x, 0]
-        noobj_loss = 1 / batch_size * lambda_noobj * self.mse(noobj_pred_conf, noobj_gt_conf)
+        noobj_gt_conf = torch.zeros_like(noobj_pred_conf)
+        noobj_loss = 1 / num_nonobj * lambda_noobj * self.mse(noobj_pred_conf, noobj_gt_conf)
 
         # classification loss
-        pred_cls = pred_cls[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
-        pred_cls.squeeze_(0)
-        gt_cls = gt_cls[batch, grid_y_idx, grid_x_idx, 0]
-        gt_cls = torch.max(gt_cls, dim=1)[1]
-        cls_loss = self.cross_entropy(pred_cls, gt_cls)
+        cls_pred = pred_cls[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
+        cls_pred.squeeze_(0)
+        cls_gt = torch.argmax(gt_cls[batch, grid_y_idx, grid_x_idx, 0], dim=1)
+        cls_loss = lambda_cls * self.cel(cls_pred, cls_gt)
+        # print(torch.argmax(cls_pred, dim=-1).tolist()[0])
 
         return box_loss, conf_loss, noobj_loss, cls_loss
+
 
 if __name__ == "__main__":
     from voc2007 import *
@@ -105,11 +109,10 @@ if __name__ == "__main__":
                               shuffle=False,
                               collate_fn=detection_collate)
 
-    model = Yolo_v2(pretrained=True).to(device)
+    model = Yolo_v2(pretrained=False).to(device)
     criterion = Loss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
-
-    epochs = 100
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    epochs = 1000
     model.train()
     for epoch in range(epochs):
         for i, data in enumerate(train_loader, 0):
@@ -123,13 +126,17 @@ if __name__ == "__main__":
 
             box_loss, conf_loss, noobj_loss, cls_loss = criterion(outputs, labels)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
-            # print(box_loss.item(), conf_loss.item())
-            # print(cls_loss.item())
+
+            # print("[epoch {:2d}] loss: {:.4f}".format(epoch, loss))
+            # print("\tbox_loss: {:.4f}, conf_loss: {:.4f}, noobj_loss: {:.4f}, cls_loss: {:.4f}"
+            #       .format(box_loss, conf_loss, noobj_loss, cls_loss))
+            # print()
 
             loss.backward()
             optimizer.step()
 
-            break
-        break
+            # break
+        # break
 
-
+    # PATH = os.path.join(cfg.save_path, 'model.pth')
+    # torch.save(model.state_dict(), PATH)
