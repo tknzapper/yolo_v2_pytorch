@@ -33,7 +33,9 @@ class VOCDataset(Dataset):
     def __getitem__(self, idx):
         img_files = os.listdir(self.img_root)
         img_file = os.path.join(self.img_root, img_files[idx])
-        image = np.array(Image.open(img_file).convert("RGB"))
+        image = Image.open(img_file).convert('RGB')
+        image = image.resize(cfg.resize)
+        image = np.array(image)
 
         if self.train:
             ann_file = img_files[idx].split('.')[-2] + '.xml'
@@ -52,26 +54,26 @@ class VOCDataset(Dataset):
             classes = torch.zeros((num_objs))
             for i, obj in enumerate(objs):
                 box = obj.find('bndbox')
-                x1 = int(box.find('xmin').text) + 1
-                y1 = int(box.find('ymin').text) + 1
+                x1 = int(box.find('xmin').text) - 1
+                y1 = int(box.find('ymin').text) - 1
                 x2 = int(box.find('xmax').text) - 1
                 y2 = int(box.find('ymax').text) - 1
                 cls = cfg.classes.index(obj.find('name').text)
                 bbox[i, :] = torch.FloatTensor([x1/width, y1/height, x2/width, y2/height])
                 classes[i] = cls
-            utils.xxyy2xywh(bbox)
+            bbox = utils.xxyy2xywh(bbox)
             transformed = self.transform(image=image, bboxes=bbox, class_labels=classes)
             return transformed["image"], transformed["bboxes"], transformed["class_labels"]
         else:
             transformed = self.transform(image=image)
-            return transformed["image"]
+            return transformed["image"], image
 
 
 def detection_collate(batch):
     imgs = []
     targets = []
 
-    feature_size = cfg.feature_size
+    # feature_size = cfg.feature_size
     num_classes = cfg.num_classes
 
     for sample in batch:
@@ -79,6 +81,7 @@ def detection_collate(batch):
         img = img.permute(2, 0, 1).contiguous()
         imgs.append(img)
 
+        feature_size = int(img.size(1) / cfg.scale_size)
         label = torch.zeros((feature_size, feature_size, (num_classes + 5)))
         bboxes = sample[1]
         classes = sample[2]
@@ -107,12 +110,14 @@ if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
     transform = A.Compose([
-        # A.RandomSizedBBoxSafeCrop(cfg.resize, cfg.resize, erosion_rate=0.2, p=1),
-        A.RandomBrightnessContrast(p=0.5),
-        A.HueSaturationValue(p=0.5),
-        A.Resize(cfg.resize, cfg.resize, p=1),
-        A.Normalize(),
-    ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
+        # A.RandomSizedBBoxSafeCrop(cfg.resize[0], cfg.resize[1], erosion_rate=0.2, p=1),
+        # A.RandomCrop(width=300, height=300),
+        A.RandomCrop(300, 400, p=1),
+        # A.RandomBrightnessContrast(p=0.5),
+        # A.HueSaturationValue(p=0.5),
+        # A.Resize(cfg.resize[0], cfg.resize[1]),
+        # A.Normalize(),
+    ], bbox_params=A.BboxParams(format='albumentations', label_fields=['class_labels']))
 
     train_root = os.path.join(cfg.data_root, 'Images/Test/')
 
@@ -124,13 +129,22 @@ if __name__ == '__main__':
                               collate_fn=detection_collate)
 
     # train_dataset[0]
+    # for i, (images, targets) in enumerate(train_loader):
+    #     if i == 0:
+    #         for img, bboxes in zip(images, targets):
+    #             visualize(img, bboxes[:4], bboxes[-1])
+    #         break
 
     # for b in range(cfg.batch_size):
-    #     img = train_dataset[b][0]
-        # bboxes = train_dataset[b][1]
-        # classes = train_dataset[b][2]
-        # visualize(img, bboxes, classes)
-        # print(img)
+    #     data = train_dataset[b]
+    #     image = data[0]
+    #     bboxes = data[1]
+    #     print(bboxes)
+    #     # bboxes = utils.xywh2xxyy(torch.Tensor(bboxes))
+    #     classes = data[2]
+    #     visualize(img, bboxes, classes)
+    #     # print(img)
+    #     break
 
-    for i, data in enumerate(train_loader, 0):
-        inputs, targets = data
+    # for i, data in enumerate(train_loader, 0):
+    #     inputs, targets = data

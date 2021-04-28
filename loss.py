@@ -10,8 +10,7 @@ class Loss(nn.Module):
         super(Loss, self).__init__()
         self.mse = nn.MSELoss(reduction='sum')
         # self.bce = nn.BCELoss(reduction='sum')
-        self.cel = nn.CrossEntropyLoss()
-        self.feature_size = feature_size
+        self.cel = nn.CrossEntropyLoss(reduction='sum')
         self.anchor = torch.FloatTensor(anchor_box)
         self.num_classes = num_classes
 
@@ -59,28 +58,27 @@ class Loss(nn.Module):
         bbox_pred = pred_box[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
         bbox_pred.squeeze_(0)
         bbox_gt = gt_box[batch, grid_y_idx, grid_x_idx, 0]
-        box_loss = 1 / batch_size * lambda_coord * self.mse(bbox_pred, bbox_gt)
+        box_loss = 1 / bsize * lambda_coord * self.mse(bbox_pred, bbox_gt)
         # print(bbox_pred.tolist()[0])
 
         # object loss
         obj_pred_conf = pred_conf[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
         obj_pred_conf.squeeze_(0)
         obj_gt_conf = gt_conf[batch, grid_y_idx, grid_x_idx, 0]
-        conf_loss = 1 / num_obj * lambda_obj * self.mse(obj_pred_conf, obj_gt_conf)
+        conf_loss = 1 / bsize * lambda_obj * self.mse(obj_pred_conf, obj_gt_conf)
         # print(obj_pred_conf.tolist()[0])
 
         # non-object loss
         noobj_pred_conf = pred_conf[noobj_batch, noobj_grid_y, noobj_grid_x, noobj_anchor_idx]
         noobj_pred_conf.squeeze_(0)
         noobj_gt_conf = torch.zeros_like(noobj_pred_conf)
-        noobj_loss = 1 / num_nonobj * lambda_noobj * self.mse(noobj_pred_conf, noobj_gt_conf)
+        noobj_loss = 1 / bsize * lambda_noobj * self.mse(noobj_pred_conf, noobj_gt_conf)
 
         # classification loss
         cls_pred = pred_cls[batch, grid_y_idx, grid_x_idx, argmax_anchor_idx]
         cls_pred.squeeze_(0)
         cls_gt = torch.argmax(gt_cls[batch, grid_y_idx, grid_x_idx, 0], dim=1)
-        cls_loss = lambda_cls * self.cel(cls_pred, cls_gt)
-        # print(torch.argmax(cls_pred, dim=-1).tolist()[0])
+        cls_loss = 1 / bsize * lambda_cls * self.cel(cls_pred, cls_gt)
 
         return box_loss, conf_loss, noobj_loss, cls_loss
 
@@ -98,8 +96,8 @@ if __name__ == "__main__":
         A.Normalize(),
     ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
 
-    train_root = os.path.join(cfg.data_root, cfg.img_root)
-    # train_root = os.path.join(cfg.data_root, 'Images/Train/')
+    # train_root = os.path.join(cfg.data_root, cfg.img_root)
+    train_root = os.path.join(cfg.data_root, 'Images/Test/')
 
     train_dataset = VOCDataset(img_root=train_root,
                                transform=transform)
@@ -109,9 +107,9 @@ if __name__ == "__main__":
                               shuffle=False,
                               collate_fn=detection_collate)
 
-    model = Yolo_v2(pretrained=False).to(device)
+    model = Yolo_v2(pretrained=True).to(device)
     criterion = Loss().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     epochs = 1000
     model.train()
     for epoch in range(epochs):

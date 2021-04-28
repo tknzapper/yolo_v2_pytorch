@@ -8,6 +8,35 @@ from utils import *
 from weight_loader import *
 
 
+layer1 = [
+    (32, 3, 1, 1),        # (out_channels, kernel_size)
+    "M",
+    (64, 3, 1, 1),
+    "M",
+    (128, 3, 1, 1),
+    (64, 1, 1, 0),
+    (128, 3, 1, 1),
+    "M",
+    (256, 3, 1, 1),
+    (128, 1, 1, 0),
+    (256, 3, 1, 1),
+    "M",
+    (512, 3, 1, 1),
+    (256, 1, 1, 0),
+    (512, 3, 1, 1),
+    (256, 1, 1, 0),
+    (512, 3, 1, 1),         # reorg layer
+]
+
+layer2 = [
+    "M",
+    (1024, 3, 1, 1),
+    (512, 1, 1, 0),
+    (1024, 3, 1, 1),
+    (512, 1, 1, 0),
+    (1024, 3, 1, 1)
+]
+
 class CNNBlock(nn.Module):
     def __init__(self, in_channels, out_channels, **kwargs):
         super(CNNBlock, self).__init__()
@@ -52,17 +81,17 @@ class GlobalAvgPool2d(nn.Module):
         return x
 
 class Darknet19(nn.Module):
-    def __init__(self, pretrained=False):
+    def __init__(self, weights_file=None):
         super(Darknet19, self).__init__()
         self.in_channels = 3
-        self.layer1 = self._make_layers(cfg.layer1)
-        self.layer2 = self._make_layers(cfg.layer2)
+        self.layer1 = self._make_layers(layer1)
+        self.layer2 = self._make_layers(layer2)
         self.conv = nn.Conv2d(self.in_channels, 1000, kernel_size=1, stride=1)
         self.global_avgpool = GlobalAvgPool2d()
         self.softmax = nn.Softmax(dim=1)
 
-        if pretrained == True:
-            self.load_weights()
+        if not weights_file == None:
+            self.load_weights(weights_file)
         else:
             self.initialize_weights()
 
@@ -89,8 +118,8 @@ class Darknet19(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def load_weights(self):
-        weights_file = cfg.pretrained_model
+    def load_weights(self, file):
+        weights_file = file
         assert len(torch.load(weights_file).keys()) == len(self.state_dict().keys())
         dic = {}
         for keys, values in zip(self.state_dict().keys(), torch.load(weights_file).values()):
@@ -109,9 +138,9 @@ class Darknet19(nn.Module):
 
 
 class Yolo_v2(nn.Module):
-    def __init__(self, pretrained=False):
+    def __init__(self, weights_file=None):
         super(Yolo_v2, self).__init__()
-        darknet19 = Darknet19(pretrained)
+        darknet19 = Darknet19(weights_file)
         self.num_classes = num_classes
         self.anchors = anchor_box
 
