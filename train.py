@@ -11,10 +11,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import time
-import albumentations as A
 
-
-# torch.manual_seed(0)
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Yolo v2')
@@ -24,7 +21,7 @@ def parse_args():
     parser.add_argument('--start_epoch', dest='start_epoch',
                         default=1, type=int)
     parser.add_argument('--dataset', dest='dataset',
-                        default='test', type=str)
+                        default='voc07train', type=str)
     parser.add_argument('--nw', dest='num_workers',
                         help='number of workers to load training data',
                         default=8, type=int)
@@ -46,9 +43,23 @@ def parse_args():
                         default=160, type=int)
     parser.add_argument('--exp_name', dest='exp_name',
                         default='default', type=str)
-
     args = parser.parse_args()
+
     return args
+
+
+def get_dataset(db_name, db_year):
+    years = db_year.split('+')
+    dataset = VOCDataset(db_name, years[0])
+    db = 'VOC' + years[0] + '_' + db_name
+    print(f'load dataset {db}')
+    for year in years[1:]:
+        db = 'VOC' + year + '_' + db_name
+        tmp = VOCDataset(db_name, year)
+        dataset += tmp
+        print(f'load and add dataset {db}')
+    return dataset
+
 
 def config(resize):
     path = './config.py'
@@ -63,7 +74,8 @@ def config(resize):
                 f.write(line)
         f.truncate()
 
-def start_train():
+
+def train():
 
     # define hyper parameters
     args = parse_args()
@@ -83,16 +95,17 @@ def start_train():
         else:
             writer = SummaryWriter('runs/' + args.exp_name)
 
-    if args.dataset == 'voc07':
-        root = os.path.join(cfg.data_root, 'Images/Train/')
+    if args.dataset == 'voc07train':
+        args.db_name = 'train'
+        args.db_year = '2007'
 
-    elif args.dataset == 'aa':
-        root = os.path.join(cfg.data_root, cfg.img_root)
-        args.batch_size = 5
+    elif args.dataset == 'voc07trainval':
+        args.db_name = 'trainval'
+        args.db_year = '2007'
 
-    elif args.dataset == 'test':
-        root = os.path.join(cfg.data_root, 'Images/Test/')
-        args.batch_size = 11
+    elif args.dataset == 'voc0712trainval':
+        args.db_name = 'trainval'
+        args.db_year = '2007+2012'
 
     else:
         raise NotImplementedError
@@ -106,17 +119,9 @@ def start_train():
     else:
         device = 'cpu'
 
-    # define transform
-    transform = A.Compose([
-        A.RandomBrightnessContrast(p=0.5),
-        A.HueSaturationValue(p=0.5),
-        # A.Resize(cfg.resize[0], cfg.resize[1], p=1),
-        A.Normalize(),
-    ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
-
     # load dataset
     print('loading dataset....')
-    train_dataset = VOCDataset(img_root=root, transform=transform)
+    train_dataset = get_dataset(args.db_name, args.db_year)
 
     print('dataset loaded.')
 
@@ -142,23 +147,27 @@ def start_train():
 
     if args.resume:
         print('resume training enable')
-        resume_checkpoint_name = 'yolov2_epoch_{}.pth'.format(args.checkpoint_epoch)
+        resume_checkpoint_name = 'yolov2_{}.pth'.format(args.checkpoint)
         resume_checkpoint_path = os.path.join(output_dir, resume_checkpoint_name)
         print('resume from {}'.format(resume_checkpoint_path))
         checkpoint = torch.load(resume_checkpoint_path)
-        model.load_state_dict(checkpoint['model'])
         args.start_epoch = checkpoint['epoch'] + 1
-        lr = checkpoint['lr']
-        print('learning rate is {}'.format(lr))
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
+        if args.mGPUs:
+            model.module.load_state_dict(checkpoint['model'])
+        else:
+            model.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
 
     # start training
     for epoch in range(args.start_epoch, args.max_epochs+1):
         if cfg.multi_scale and epoch in cfg.epoch_scale:
             cfg.scale_range = cfg.epoch_scale[epoch]
             print(f'change scale range to {cfg.scale_range}')
+        elif cfg.multi_scale and epoch == args.max_epochs:
+            cfg.scale_range = cfg.epoch_scale[1]
 
+        # train
+        model.train()
         loss_temp = 0
         tic = time.time()
         for step, (inputs, targets) in enumerate(train_loader):
@@ -174,6 +183,9 @@ def start_train():
 
             box_loss, conf_loss, noobj_loss, cls_loss = criterion(ouputs, targets)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
+            if torch.isnan(loss):
+                print('Found NaN loss. Train terminated...')
+                return 0
 
             optimizer.zero_grad()
             loss.backward()
@@ -186,7 +198,6 @@ def start_train():
 
                 print("[epoch {:2d}][step {:3d}/{:3d}] loss: {:.4f}, time cost {:.1f}s"
                       .format(epoch, step+1, iters_per_epoch, loss, toc-tic))
-                # print(f"[epoch {epoch:2d}][step {step+1:3d}/{iters_per_epoch:3d}] loss: {loss:.4f}")
                 print(f"\t\tbox_loss: {box_loss:.4f}, conf_loss: {conf_loss:.4f}, "
                       f"noobj_loss: {noobj_loss:.4f}, cls_loss: {cls_loss:.4f}")
                 print()
@@ -202,16 +213,18 @@ def start_train():
                 loss_temp = 0
                 tic = time.time()
 
+        # save model
         if epoch % args.save_interval == 0:
-            save_name = os.path.join(output_dir, f'yolov2_epoch_{epoch}.pth')
+            PATH = os.path.join(output_dir, f'yolov2_E{epoch}.pth')
             torch.save({
-                'model': model.module.state_dict() if args.mGPUs else model.state_dict(),
                 'epoch': epoch,
-                'lr': lr
-            }, save_name)
+                'model': model.module.state_dict() if args.mGPUs else model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+            }, PATH)
+
+        # adjust lr_scheduler
         scheduler.step()
 
 
 if __name__ == "__main__":
-    start_train()
-    config((416, 416))
+    train()

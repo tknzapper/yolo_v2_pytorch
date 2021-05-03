@@ -1,11 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
-import numpy as np
 import config as cfg
-from utils import *
-from weight_loader import *
 
 
 layer1 = [
@@ -141,8 +136,8 @@ class Yolo_v2(nn.Module):
     def __init__(self, weights_file=None):
         super(Yolo_v2, self).__init__()
         darknet19 = Darknet19(weights_file)
-        self.num_classes = num_classes
-        self.anchors = anchor_box
+        self.num_classes = cfg.num_classes
+        self.anchors = cfg.anchor_box
 
         # darknet backbone
         self.conv1 = darknet19.layer1
@@ -183,11 +178,3 @@ class Yolo_v2(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, 0, 0.01)
                 nn.init.constant_(m.bias, 0)
-
-if __name__ == "__main__":
-    from torchsummary import summary
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # model = Yolo_v2().to(device)
-    # summary(model, (3, 416, 416))
-    # net = Darknet19(pretrained=True)

@@ -1,6 +1,4 @@
 import torch
-from config import *
-
 
 
 def xxyy2xywh(box):
@@ -63,14 +61,12 @@ def box_iou(box1, box2):
     return area_intersect / (area_union + 1e-4)
 
 
-def generate_anchorbox(box, device="cuda"):
+def generate_anchorbox(box, anchor):
     """
     box size: [batch, grid, anchor, coordinate]
     :param box: [x, y, w, h]
     :return:
     """
-
-    anchor = torch.FloatTensor(anchor_box).to(device)
 
     box[..., 2:4] *= anchor[..., 0:2]
 

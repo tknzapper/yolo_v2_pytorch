@@ -1,5 +1,4 @@
 import config as cfg
-import utils
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
