@@ -9,35 +9,61 @@ import config as cfg
 import albumentations as A
 
 
+transform = A.Compose([
+        A.RandomBrightnessContrast(p=0.5),
+        A.HueSaturationValue(p=0.5),
+        # A.Resize(cfg.resize[0], cfg.resize[1], p=1),
+        A.Normalize(),
+], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
+
+
 class VOCDataset(Dataset):
-    def __init__(self, img_root, transform, train=True):
-        self.annot_root = cfg.data_root + cfg.annot_root
-        self.img_root = img_root
+    def __init__(self, image_set, year, transform=transform, train=True):
+        self.image_set = image_set
+        self.year = year
+        self.image_idx = self._load_image_set_idx()
         self.transform = transform
         self.train = train
 
-        if not self._check_exists():
-            raise RuntimeError("Dataset not found.")
-
-    def _check_exists(self):
-        # print("Image Folder@~ {}".format(os.path.abspath(self.img_root)))
-        # print("Label Folder@~ {}".format(os.path.abspath(self.annot_root)))
-        if self.train:
-            return os.path.exists(self.img_root) and os.path.exists(self.annot_root)
-        else:
-            return os.path.exists(self.img_root)
-
     def __len__(self):
-        return len(os.listdir(self.img_root))
+        return len(self.image_idx)
+
+    def _get_default_path(self):
+        root_dir = os.path.join(os.path.dirname(__file__))
+        data_dir = os.path.join(root_dir, 'data', 'VOCdevkit')
+        return os.path.join(data_dir, 'VOC' + self.year)
+
+    def _load_image_set_idx(self):
+        image_set_file = os.path.join(self._get_default_path(),
+                                      'ImageSets', 'Main', self.image_set + '.txt')
+        assert os.path.exists(image_set_file), \
+            'Path does not exist: {}'.format(image_set_file)
+        with open(image_set_file) as f:
+            image_idx = [x.strip() for x in f.readlines()]
+        return image_idx
+
+    def _image_path_at(self, idx):
+        image_root = os.path.join(self._get_default_path(), 'JPEGImages')
+        return os.path.join(image_root, self._image_path_from_idx(idx))
+
+    def _image_path_from_idx(self, idx):
+        return self.image_idx[idx] + '.jpg'
+
+    def _annotation_path_at(self, idx):
+        annotation_root = os.path.join(self._get_default_path(), 'Annotations')
+        return os.path.join(annotation_root, self._annotation_path_from_idx(idx))
+
+    def _annotation_path_from_idx(self, idx):
+        return self.image_idx[idx] + '.xml'
 
     def __getitem__(self, idx):
-        img_files = os.listdir(self.img_root)
-        img_file = os.path.join(self.img_root, img_files[idx])
-        image = np.array(Image.open(img_file).convert("RGB"))
+        image = Image.open(self._image_path_at(idx)).convert('RGB')
+        img_width, img_height = image.width, image.height
+        image = image.resize(cfg.resize)
+        image = np.array(image)
 
         if self.train:
-            ann_file = img_files[idx].split('.')[-2] + '.xml'
-            xml = open(os.path.join(self.annot_root, ann_file))
+            xml = open(self._annotation_path_at(idx))
             tree = ET.parse(xml)
             root = tree.getroot()
 
@@ -52,26 +78,26 @@ class VOCDataset(Dataset):
             classes = torch.zeros((num_objs))
             for i, obj in enumerate(objs):
                 box = obj.find('bndbox')
-                x1 = int(box.find('xmin').text) + 1
-                y1 = int(box.find('ymin').text) + 1
+                x1 = int(box.find('xmin').text) - 1
+                y1 = int(box.find('ymin').text) - 1
                 x2 = int(box.find('xmax').text) - 1
                 y2 = int(box.find('ymax').text) - 1
                 cls = cfg.classes.index(obj.find('name').text)
                 bbox[i, :] = torch.FloatTensor([x1/width, y1/height, x2/width, y2/height])
                 classes[i] = cls
-            utils.xxyy2xywh(bbox)
+            bbox = utils.xxyy2xywh(bbox)
             transformed = self.transform(image=image, bboxes=bbox, class_labels=classes)
             return transformed["image"], transformed["bboxes"], transformed["class_labels"]
         else:
             transformed = self.transform(image=image)
-            return transformed["image"]
+            return transformed["image"], self._image_path_from_idx(idx)
 
 
 def detection_collate(batch):
     imgs = []
     targets = []
 
-    feature_size = cfg.feature_size
+    # feature_size = cfg.feature_size
     num_classes = cfg.num_classes
 
     for sample in batch:
@@ -79,6 +105,7 @@ def detection_collate(batch):
         img = img.permute(2, 0, 1).contiguous()
         imgs.append(img)
 
+        feature_size = int(img.size(1) / cfg.scale_size)
         label = torch.zeros((feature_size, feature_size, (num_classes + 5)))
         bboxes = sample[1]
         classes = sample[2]
@@ -101,36 +128,9 @@ def detection_collate(batch):
     return torch.stack(imgs, dim=0), torch.stack(targets, dim=0)
 
 
-
 if __name__ == '__main__':
-    from visualize import *
-    from torch.utils.data import DataLoader
 
-    transform = A.Compose([
-        # A.RandomSizedBBoxSafeCrop(cfg.resize, cfg.resize, erosion_rate=0.2, p=1),
-        A.RandomBrightnessContrast(p=0.5),
-        A.HueSaturationValue(p=0.5),
-        A.Resize(cfg.resize, cfg.resize, p=1),
-        A.Normalize(),
-    ], bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels']))
-
-    train_root = os.path.join(cfg.data_root, 'Images/Test/')
-
-    train_dataset = VOCDataset(img_root=train_root,
-                               transform=transform)
-    train_loader = DataLoader(dataset=train_dataset,
-                              batch_size=len(train_dataset),
-                              shuffle=False,
-                              collate_fn=detection_collate)
-
-    # train_dataset[0]
-
-    # for b in range(cfg.batch_size):
-    #     img = train_dataset[b][0]
-        # bboxes = train_dataset[b][1]
-        # classes = train_dataset[b][2]
-        # visualize(img, bboxes, classes)
-        # print(img)
-
-    for i, data in enumerate(train_loader, 0):
-        inputs, targets = data
+    db07 = VOCDataset(image_set='trainval', year='2007')
+    db12 = VOCDataset(image_set='trainval', year='2012')
+    dataset = db07 + db12
+    print(dataset[0])

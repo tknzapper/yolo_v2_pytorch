@@ -1,5 +1,4 @@
 import config as cfg
-import utils
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
@@ -67,7 +66,7 @@ def visualize(image, bboxes, classes):
     img = image.copy()
     for objs in range(len(bboxes)):
         bbox = bboxes[objs]
-        class_idx = classes[objs]
+        class_idx = int(classes[objs])
         img = visualize_bbox(img, bbox, class_idx)
     img.show()
 

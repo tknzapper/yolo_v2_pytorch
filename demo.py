@@ -1,88 +1,117 @@
-import torch
-from torchvision.ops import nms
-import config as cfg
+import argparse
 import os
-import albumentations as A
-import voc2007 as voc
-import numpy as np
+import torch
+from torch.utils.data import DataLoader
+import config as cfg
 import utils
-import visualize as vis
+import albumentations as A
+from voc2007 import VOCDataset
+from visualize import visualize
 from model import Yolo_v2
+from eval import eval
+import time
+from PIL import Image
 
-device = torch.device("cpu")
 
-PATH = os.path.join(cfg.save_path, 'model.pth')
+def parse_args():
+    parser = argparse.ArgumentParser(description='Yolo v2 eval')
+    parser.add_argument('--cuda', dest='use_cuda',
+                        default=True, type=bool)
+    parser.add_argument('--mGPUs', dest='mGPUs',
+                        default=False, type=bool)
+    parser.add_argument('--dataset', dest='dataset',
+                        default='voc07test', type=str)
+    parser.add_argument('--model', dest='model',
+                        default='default', type=str)
+    parser.add_argument('--nw', dest='num_workers',
+                        help='number of workers to load training data',
+                        default=1, type=int)
+    parser.add_argument('--conf', dest='conf_thresh',
+                        default=0.8, type=float)
+    parser.add_argument('--nms', dest='nms_thresh',
+                        default=0.4, type=float)
 
-model = Yolo_v2(pretrained=True)
-model.load_state_dict(torch.load(PATH, map_location=device))
-model.eval()
+    args = parser.parse_args()
+    return args
 
-trans = A.Compose([
-    A.Resize(cfg.resize, cfg.resize, p=1),
-    A.Normalize(),
-])
-denorm = A.Compose([
-    A.Normalize(mean=(-0.485 / 0.229 * 255, -0.456 / 0.224 * 255, -0.406 / 0.225 * 255),
-                std=(1 / 0.229, 1 / 0.224, 1 / 0.225), max_pixel_value=1 / 255.)
-])
 
-test_root = cfg.data_root + 'Images/Test/'
-root = os.path.join(cfg.data_root, cfg.img_root)
-test_dataset = voc.VOCDataset(img_root=root, transform=trans)
+def demo():
+    args = parse_args()
+    print(f'Called with args: {args}')
 
-for i in range(len(test_dataset)):
-    image = test_dataset[i][0]
-    trans_img = denorm(image=image)
-    im = trans_img['image'].astype(np.uint8)
+    args.weights_file = os.path.join('weights', 'pretrained', 'darknet19.pth')
+    args.data_root = os.path.join('data/VOCdevkit/VOC2007/JPEGImages')
 
-    img = torch.from_numpy(test_dataset[i][0])
-    img = img.permute(2, 0, 1).contiguous()
-    img = torch.unsqueeze(img, 0)
-    img = img.to(device)
+    if args.use_cuda:
+        device = 'cuda'
+    else:
+        device = 'cpu'
 
-    out = model(img).detach().cpu()
-    bsize, _, H, W = out.size()
-    out = out.permute(0, 2, 3, 1).contiguous().view(bsize, H, W, 5, 25)
+    if args.dataset == 'voc07test':
+        args.db_name = 'test'
+        args.db_year = '2007'
 
-    pred_conf = torch.sigmoid(out[..., 20])
-    pred_xy = torch.sigmoid(out[..., 21:23])
-    pred_wh = torch.exp(out[..., 23:25])
-    pred_cls = torch.nn.Softmax(dim=-1)(out[..., :20])
-    pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-    scale_factor = 1 / cfg.feature_size
-    idx = torch.where(pred_conf > 0.9)
-    num_obj = idx[0].size(0)
-    # print(num_obj)
-    batch = idx[0].T
-    grid_y_idx = idx[1].T
-    grid_x_idx = idx[2].T
-    anchor_idx = idx[3].T
-    utils.generate_anchorbox(pred_box, device)
+    else:
+        raise NotImplementedError
 
-    bbox = pred_box[batch, grid_y_idx, grid_x_idx, anchor_idx]
-    score = pred_conf[batch, grid_y_idx, grid_x_idx, anchor_idx]
-    classes = torch.argmax(pred_cls[batch, grid_y_idx, grid_x_idx, anchor_idx], dim=-1)
-    # print(pred_box[0, 7, 6])
-    # print(pred_conf[0, 7, 6])
-    # print(torch.argmax(pred_cls[0, 7, 6], dim=-1))
-    cx = (bbox[:, 0] + grid_x_idx) * scale_factor
-    cy = (bbox[:, 1] + grid_y_idx) * scale_factor
-    w = bbox[:, 2] * scale_factor
-    h = bbox[:, 3] * scale_factor
+    if args.model == 'default':
+        PATH = os.path.join(cfg.output_dir, 'yolov2_voc0712trainval_E160.pth')
 
-    xmin = torch.zeros_like(cx)
-    ymin = torch.zeros_like(cy)
-    xmax = torch.ones_like(cx)
-    ymax = torch.ones_like(cy)
-    for i in range(num_obj):
-        xmin[i] = cx[i] - (w[i] / 2) if cx[i] - (w[i] / 2) > 0 else 0
-        ymin[i] = cy[i] - (h[i] / 2) if cy[i] - (h[i] / 2) > 0 else 0
-        xmax[i] = cx[i] + (w[i] / 2) if cx[i] + (w[i] / 2) < 1 else 1
-        ymax[i] = cy[i] + (h[i] / 2) if cy[i] + (h[i] / 2) < 1 else 1
+    else:
+        PATH = os.path.join(cfg.output_dir, args.model)
 
-    bbox = torch.cat([xmin.unsqueeze_(1), ymin.unsqueeze_(1), xmax.unsqueeze_(1), ymax.unsqueeze_(1)], dim=1)
-    idx_nms = nms(bbox, score, iou_threshold=0.3)
+    transform = A.Compose([
+        A.Resize(416, 416, p=1),
+        A.Normalize(),
+    ])
 
-    vis.visualize(im, bbox[idx_nms], classes[idx_nms])
+    test_dataset = VOCDataset(image_set=args.db_name,  year=args.db_year, transform=transform, train=False)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=1,
+                             shuffle=False, num_workers=args.num_workers)
 
-    break
+    model = Yolo_v2(weights_file=args.weights_file).to(device)
+    checkpoint = torch.load(PATH, map_location=device)
+
+    if args.mGPUs:
+        model.module.load_state_dict(checkpoint['model'])
+    else:
+        model.load_state_dict(checkpoint['model'])
+
+    model.eval()
+
+    with torch.no_grad():
+        for i, (img, image_file) in enumerate(test_loader):
+            image = Image.open(os.path.join(args.data_root, image_file[0])).convert('RGB')
+            img = img.permute(0, 3, 1, 2).contiguous()
+            img = img.to(device)
+
+            tic = time.time()
+
+            out = model(img)
+            bsize, _, H, W = out.size()
+            out = out.permute(0, 2, 3, 1).contiguous().view(bsize, H, W, len(cfg.anchor_box), 25)
+
+            pred_conf = torch.sigmoid(out[..., 20])
+            pred_xy = torch.sigmoid(out[..., 21:23])
+            pred_wh = torch.exp(out[..., 23:25])
+            pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
+            anchor_box = torch.FloatTensor(cfg.anchor_box).to(device)
+            pred_box = utils.generate_anchorbox(pred_box, anchor_box)
+            pred_cls = torch.nn.Softmax(dim=-1)(out[..., :20])
+
+            detection = eval(pred_box, pred_conf, pred_cls, args.conf_thresh, args.nms_thresh)
+            toc = time.time()
+            time_cost = toc - tic
+            print(f'[{i+1:2d}/{len(test_dataset):2d}]\t\t\t{time_cost:.4f} sec{int(1/time_cost):>10} fps')
+            # print(res.detach().cpu())
+            if detection == []:
+                print("No object")
+                continue
+            bbox = detection[:, :4].detach().cpu()
+            cls = detection[:, 6].detach().cpu()
+            visualize(image, bbox, cls)
+            # break
+
+
+if __name__ == "__main__":
+    demo()
