@@ -24,3 +24,11 @@ weights/model/model.pth
 set.py
 
 weights/
+
+dataset/
+
+utils_eval.py
+
+voc2007.py
+
+yolo_v2.zip
