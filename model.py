@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import config as cfg
+from config import config as cfg
 
 
 layer1 = [

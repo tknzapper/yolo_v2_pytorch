@@ -1,16 +1,16 @@
-import argparse
 import os
+import time
+import argparse
 import torch
-from torch.utils.data import DataLoader
-import config as cfg
-import utils
+from PIL import Image
 import albumentations as A
 from voc import VOCDataset
-from visualize import visualize
+from config import config as cfg
+from torch.utils.data import DataLoader
+from utils.bbox import xywh2xxyy, box_transform_inv, generate_grid
+from utils.eval import eval, BoundBox
+from utils.visualize import visualize
 from model import Yolo_v2
-from eval import eval, BoundBox
-import time
-from PIL import Image
 
 
 def parse_args():
@@ -97,7 +97,7 @@ def demo():
             out = out.permute(0, 2, 3, 1).contiguous().view(-1, len(cfg.anchor_box), 5 + cfg.num_classes)
             device = out.device
             anchor = torch.FloatTensor(cfg.anchor_box).to(device)
-            grid_xywh = utils.generate_grid(bsize, H, W)
+            grid_xywh = generate_grid(bsize, H, W)
             grid_xywh = out.new(*grid_xywh.size()).copy_(grid_xywh)
             grid_xywh_pred = grid_xywh.view(bsize * H * W, 1, 2).expand(bsize * H * W, len(cfg.anchor_box), 2)
 
@@ -106,9 +106,9 @@ def demo():
             delta_wh = torch.exp(out[..., 23:25])
             delta_box = torch.cat([delta_xy, delta_wh], dim=-1)
             delta_box[..., 2:4] *= anchor[..., 0:2]
-            pred_box = utils.box_transform_inv(grid_xywh_pred, delta_box)
+            pred_box = box_transform_inv(grid_xywh_pred, delta_box)
             pred_box /= H
-            pred_box = utils.xywh2xxyy(pred_box)
+            pred_box = xywh2xxyy(pred_box)
             pred_conf = torch.sigmoid(out[..., 20])
             pred_cls = torch.nn.Softmax(dim=-1)(out[..., :20])
 

@@ -6,7 +6,7 @@ from voc import VOCDataset, detection_collate
 from torch.utils.data import DataLoader
 from model import Yolo_v2
 from loss import Loss
-import config as cfg
+from config import config as cfg
 import torch
 import torch.nn as nn
 import numpy as np
@@ -20,8 +20,10 @@ def parse_args():
                         default=cfg.epochs, type=int)
     parser.add_argument('--start_epoch', dest='start_epoch',
                         default=1, type=int)
+    parser.add_argument('--batch', dest='batch_size',
+                        default=cfg.batch_size, type=int)
     parser.add_argument('--dataset', dest='dataset',
-                        default='voc07aa', type=str)
+                        default='voc07train', type=str)
     parser.add_argument('--nw', dest='num_workers',
                         help='number of workers to load training data',
                         default=8, type=int)
@@ -62,7 +64,7 @@ def get_dataset(db_name, db_year):
 
 
 def config(resize):
-    path = './config.py'
+    path = './config/config.py'
     p = re.compile(r'resize = [(]\d*[,]\s\d*[)]')
     with open(path, 'r+') as f:
         lines = f.readlines()
@@ -81,7 +83,6 @@ def train():
     args = parse_args()
     args.lr = cfg.lr
     args.milestone = cfg.lr_decay
-    args.batch_size = cfg.batch_size
     args.weights_file = os.path.join('weights', 'pretrained', 'darknet19.pth')
 
     print('Called with args:')
@@ -99,17 +100,9 @@ def train():
         args.db_name = 'train'
         args.db_year = '2007'
 
-    elif args.dataset == 'voc07trainval':
-        args.db_name = 'trainval'
-        args.db_year = '2007'
-
     elif args.dataset == 'voc0712trainval':
         args.db_name = 'trainval'
         args.db_year = '2007+2012'
-
-    elif args.dataset == 'voc07aa':
-        args.db_name = 'aa'
-        args.db_year = '2007'
 
     else:
         raise NotImplementedError
@@ -146,8 +139,6 @@ def train():
     # initialize criterion, optimizer, scheduler
     criterion = Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestone, gamma=0.1, verbose=True)
-    iters_per_epoch = int(len(train_dataset) / args.batch_size)
 
     if args.resume:
         print('resume training enable')
@@ -161,6 +152,9 @@ def train():
         else:
             model.load_state_dict(checkpoint['model'])
         optimizer.load_state_dict(checkpoint['optimizer'])
+
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=args.milestone, gamma=0.1, verbose=True)
+    iters_per_epoch = int(len(train_dataset) / args.batch_size)
 
     # start training
     for epoch in range(args.start_epoch, args.max_epochs+1):

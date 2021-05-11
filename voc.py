@@ -4,8 +4,8 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 import torch
 from torch.utils.data import Dataset
-import utils
-import config as cfg
+from utils.bbox import xxyy2xywh
+from config import config as cfg
 import albumentations as A
 
 
@@ -83,7 +83,7 @@ class VOCDataset(Dataset):
                 cls = cfg.classes.index(obj.find('name').text)
                 bbox[i, :] = torch.FloatTensor([x1/width, y1/height, x2/width, y2/height])
                 classes[i] = cls
-            bbox = utils.xxyy2xywh(bbox)
+            bbox = xxyy2xywh(bbox)
             num_obj = torch.Tensor([bbox.size(0)]).long()
             transformed = self.transform(image=image, bboxes=bbox, class_labels=classes)
             return torch.FloatTensor(transformed["image"]).permute(2, 0, 1).contiguous(), transformed["bboxes"], transformed["class_labels"], num_obj

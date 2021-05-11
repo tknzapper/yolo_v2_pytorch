@@ -1,5 +1,5 @@
-import config as cfg
-from utils import box_iou, box_transform_inv, generate_grid
+from config import config as cfg
+from utils.bbox import box_iou, box_transform_inv, generate_grid
 import torch
 import torch.nn as nn
 

@@ -1,4 +1,4 @@
-import config as cfg
+from config import config as cfg
 from PIL import ImageDraw, ImageFont
 
 

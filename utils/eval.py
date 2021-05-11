@@ -1,5 +1,5 @@
 import torch
-import config as cfg
+from config import config as cfg
 
 
 class BoundBox:
