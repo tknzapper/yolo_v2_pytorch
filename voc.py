@@ -113,3 +113,19 @@ if __name__ == '__main__':
     db12 = VOCDataset(image_set='trainval', year='2012')
     dataset = db07 + db12
     print(dataset[0])
+
+    # import shutil
+    #
+    # test = VOCDataset(image_set='test', year='2007')
+    # train07 = VOCDataset(image_set='train', year='2007')
+    # train12 = VOCDataset(image_set='train', year='2012')
+    #
+    # dataset = train12
+    # total = len(dataset.image_idx)
+    # annot_dst = './data/annotations/'
+    # img_dst = './data/images/'
+    # for idx in range(total):
+    #     annot_src = dataset._annotation_path_at(idx)
+    #     img_src = dataset._image_path_at(idx)
+    #     shutil.copy(annot_src, annot_dst)
+    #     shutil.copy(img_src, img_dst)

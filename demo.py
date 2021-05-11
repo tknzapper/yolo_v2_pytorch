@@ -129,6 +129,7 @@ def demo():
 
             bbox = []
             print('{0:_^24} {1:_^8} {2:_^8} {3:_<10}'.format('BBOX', 'PRED', 'CONF', 'CLASS'))
+            # with open(f'./data/output/{image_file[0].split(".")[0]}.txt', 'w') as f:
             for objs in range(len(bbox_pred)):
                 xmin = int(bbox_pred.tolist()[objs][0] * image.width)
                 ymin = int(bbox_pred.tolist()[objs][1] * image.height)
@@ -137,6 +138,7 @@ def demo():
                 score_pred = conf_pred.tolist()[objs]
                 score_cls = conf_cls.tolist()[objs]
                 cls = int(cls_pred.tolist()[objs])
+                # f.write(f"{cls} {score_pred} {xmin} {ymin} {xmax} {ymax}\n")
                 box = BoundBox(xmin, ymin, xmax, ymax, score_pred, score_cls, cls)
                 bbox.append(box)
                 print(f'[  {xmin:3d}  {ymin:3d}  {xmax:3d}  {ymax:3d}  ]', end=' ')
@@ -144,7 +146,7 @@ def demo():
                 print(f' {score_cls:.4f} ', end=' ')
                 print(f'{box.cls_name:<10}')
             print()
-            visualize(image, bbox)
+            visualize(image, image_file[0], bbox)
             # break
 
 

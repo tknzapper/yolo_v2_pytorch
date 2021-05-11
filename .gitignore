@@ -3,8 +3,6 @@
 
 __pycache__/
 
-data/
-
 runs/
 
 weight_loader.py
@@ -32,3 +30,11 @@ utils_eval.py
 voc2007.py
 
 yolo_v2.zip
+
+data/VOCdevkit/
+
+*.tar
+
+data/
+
+annotation.py

@@ -1,5 +1,5 @@
 from config import config as cfg
-from PIL import ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 
 def hsv2rgb(h, s=1., v=1.):
@@ -61,9 +61,9 @@ def visualize_bbox(image, bbox, width=3):
     return image
 
 
-def visualize(image, bbox):
+def visualize(image, name, bbox):
     img = image.copy()
     for box in bbox:
         img = visualize_bbox(img, box)
     img.show()
-
+    # img.save(f'./data/test/{name}')
