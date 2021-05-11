@@ -12,7 +12,7 @@ anchor_box = [[1.3221,  1.73145],
               [9.47112, 4.84053],
               [11.2364, 10.0071]]
 
-batch_size = 12
+batch_size = 16
 epochs = 160
 lr = 1e-4
 lr_decay = [60, 90]
@@ -24,7 +24,7 @@ lambda_cls = 1
 
 multi_scale = True
 scale_step = 50
-scale_range = (3, 4)
+scale_range = (1, 2)
 epoch_scale = {
     1:   (1, 2),
     15:  (0, 3),
@@ -34,6 +34,7 @@ epoch_scale = {
 
 scale_size = 32
 resize = (416, 416)
+test_resize = (416, 416)
 input_sizes = [(352, 352), # 0: 11 x 11
                (416, 416), # 1: 13 x 13
                (480, 480), # 2: 15 x 15

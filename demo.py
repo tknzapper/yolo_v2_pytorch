@@ -5,10 +5,10 @@ from torch.utils.data import DataLoader
 import config as cfg
 import utils
 import albumentations as A
-from voc2007 import VOCDataset
+from voc import VOCDataset
 from visualize import visualize
 from model import Yolo_v2
-from eval import eval
+from eval import eval, BoundBox
 import time
 from PIL import Image
 
@@ -27,7 +27,7 @@ def parse_args():
                         help='number of workers to load training data',
                         default=1, type=int)
     parser.add_argument('--conf', dest='conf_thresh',
-                        default=0.8, type=float)
+                        default=0.1, type=float)
     parser.add_argument('--nms', dest='nms_thresh',
                         default=0.4, type=float)
 
@@ -51,17 +51,21 @@ def demo():
         args.db_name = 'test'
         args.db_year = '2007'
 
+    elif args.dataset == 'voc07train':
+        args.db_name = 'train'
+        args.db_year = '2007'
+
     else:
         raise NotImplementedError
 
     if args.model == 'default':
-        PATH = os.path.join(cfg.output_dir, 'yolov2_voc0712trainval_E160.pth')
+        PATH = os.path.join(cfg.output_dir, 'yolov2_E160.pth')
 
     else:
         PATH = os.path.join(cfg.output_dir, args.model)
 
     transform = A.Compose([
-        A.Resize(416, 416, p=1),
+        A.Resize(cfg.test_resize[0], cfg.test_resize[1], p=1),
         A.Normalize(),
     ])
 
@@ -88,28 +92,59 @@ def demo():
             tic = time.time()
 
             out = model(img)
-            bsize, _, H, W = out.size()
-            out = out.permute(0, 2, 3, 1).contiguous().view(bsize, H, W, len(cfg.anchor_box), 25)
 
+            bsize, _, H, W = out.size()
+            out = out.permute(0, 2, 3, 1).contiguous().view(-1, len(cfg.anchor_box), 5 + cfg.num_classes)
+            device = out.device
+            anchor = torch.FloatTensor(cfg.anchor_box).to(device)
+            grid_xywh = utils.generate_grid(bsize, H, W)
+            grid_xywh = out.new(*grid_xywh.size()).copy_(grid_xywh)
+            grid_xywh_pred = grid_xywh.view(bsize * H * W, 1, 2).expand(bsize * H * W, len(cfg.anchor_box), 2)
+
+            # prediction data
+            delta_xy = torch.sigmoid(out[..., 21:23])
+            delta_wh = torch.exp(out[..., 23:25])
+            delta_box = torch.cat([delta_xy, delta_wh], dim=-1)
+            delta_box[..., 2:4] *= anchor[..., 0:2]
+            pred_box = utils.box_transform_inv(grid_xywh_pred, delta_box)
+            pred_box /= H
+            pred_box = utils.xywh2xxyy(pred_box)
             pred_conf = torch.sigmoid(out[..., 20])
-            pred_xy = torch.sigmoid(out[..., 21:23])
-            pred_wh = torch.exp(out[..., 23:25])
-            pred_box = torch.cat([pred_xy, pred_wh], dim=-1)
-            anchor_box = torch.FloatTensor(cfg.anchor_box).to(device)
-            pred_box = utils.generate_anchorbox(pred_box, anchor_box)
             pred_cls = torch.nn.Softmax(dim=-1)(out[..., :20])
 
             detection = eval(pred_box, pred_conf, pred_cls, args.conf_thresh, args.nms_thresh)
             toc = time.time()
             time_cost = toc - tic
+
             print(f'[{i+1:2d}/{len(test_dataset):2d}]\t\t\t{time_cost:.4f} sec{int(1/time_cost):>10} fps')
-            # print(res.detach().cpu())
+
             if detection == []:
                 print("No object")
                 continue
-            bbox = detection[:, :4].detach().cpu()
-            cls = detection[:, 6].detach().cpu()
-            visualize(image, bbox, cls)
+
+            bbox_pred = detection[:, :4].detach().cpu()
+            conf_pred = detection[:, 4].detach().cpu()
+            conf_cls = detection[:, 5].detach().cpu()
+            cls_pred = detection[:, 6].detach().cpu()
+
+            bbox = []
+            print('{0:_^24} {1:_^8} {2:_^8} {3:_<10}'.format('BBOX', 'PRED', 'CONF', 'CLASS'))
+            for objs in range(len(bbox_pred)):
+                xmin = int(bbox_pred.tolist()[objs][0] * image.width)
+                ymin = int(bbox_pred.tolist()[objs][1] * image.height)
+                xmax = int(bbox_pred.tolist()[objs][2] * image.width)
+                ymax = int(bbox_pred.tolist()[objs][3] * image.height)
+                score_pred = conf_pred.tolist()[objs]
+                score_cls = conf_cls.tolist()[objs]
+                cls = int(cls_pred.tolist()[objs])
+                box = BoundBox(xmin, ymin, xmax, ymax, score_pred, score_cls, cls)
+                bbox.append(box)
+                print(f'[  {xmin:3d}  {ymin:3d}  {xmax:3d}  {ymax:3d}  ]', end=' ')
+                print(f' {score_pred:.4f} ', end=' ')
+                print(f' {score_cls:.4f} ', end=' ')
+                print(f'{box.cls_name:<10}')
+            print()
+            visualize(image, bbox)
             # break
 
 

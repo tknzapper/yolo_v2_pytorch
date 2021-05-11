@@ -2,7 +2,7 @@ import argparse
 import os
 import re
 from torch.utils.tensorboard.writer import SummaryWriter
-from voc2007 import VOCDataset, detection_collate
+from voc import VOCDataset, detection_collate
 from torch.utils.data import DataLoader
 from model import Yolo_v2
 from loss import Loss
@@ -21,7 +21,7 @@ def parse_args():
     parser.add_argument('--start_epoch', dest='start_epoch',
                         default=1, type=int)
     parser.add_argument('--dataset', dest='dataset',
-                        default='voc07train', type=str)
+                        default='voc07aa', type=str)
     parser.add_argument('--nw', dest='num_workers',
                         help='number of workers to load training data',
                         default=8, type=int)
@@ -39,7 +39,7 @@ def parse_args():
                         default=True, type=bool)
     parser.add_argument('--resume', dest='resume',
                         default=False, type=bool)
-    parser.add_argument('--checkpoint_epoch', dest='checkpoint_epoch',
+    parser.add_argument('--checkpoint', dest='checkpoint',
                         default=160, type=int)
     parser.add_argument('--exp_name', dest='exp_name',
                         default='default', type=str)
@@ -107,6 +107,10 @@ def train():
         args.db_name = 'trainval'
         args.db_year = '2007+2012'
 
+    elif args.dataset == 'voc07aa':
+        args.db_name = 'aa'
+        args.db_year = '2007'
+
     else:
         raise NotImplementedError
 
@@ -147,7 +151,7 @@ def train():
 
     if args.resume:
         print('resume training enable')
-        resume_checkpoint_name = 'yolov2_{}.pth'.format(args.checkpoint)
+        resume_checkpoint_name = 'yolov2_E{}.pth'.format(args.checkpoint)
         resume_checkpoint_path = os.path.join(output_dir, resume_checkpoint_name)
         print('resume from {}'.format(resume_checkpoint_path))
         checkpoint = torch.load(resume_checkpoint_path)
@@ -170,18 +174,22 @@ def train():
         model.train()
         loss_temp = 0
         tic = time.time()
-        for step, (inputs, targets) in enumerate(train_loader):
+        for step, (img, bbox, cls, num_obj) in enumerate(train_loader):
             if cfg.multi_scale and (step + 1) % cfg.scale_step == 0:
                 scale_index = np.random.randint(*cfg.scale_range)
                 resize = cfg.input_sizes[scale_index]
                 config(resize)
                 print(f'change input size {resize}')
 
-            inputs = inputs.to(device)
-            targets = targets.to(device).float()
-            ouputs = model(inputs)
+            img = img.to(device)
+            bbox = bbox.to(device)
+            cls = cls.to(device)
+            num_obj = num_obj.to(device)
+            gt_data = (bbox, cls, num_obj)
 
-            box_loss, conf_loss, noobj_loss, cls_loss = criterion(ouputs, targets)
+            out = model(img)
+
+            box_loss, conf_loss, noobj_loss, cls_loss = criterion(out, gt_data)
             loss = box_loss + conf_loss + noobj_loss + cls_loss
             if torch.isnan(loss):
                 print('Found NaN loss. Train terminated...')
